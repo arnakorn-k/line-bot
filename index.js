@@ -25,7 +25,7 @@ async function handleEvent(event) {
     }
     return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: `คุณหน้าหีพูดว่า: ${event.message.text}`,
+        text: `คุณพูดว่า: ${event.message.text}`,
     });
 }
 
