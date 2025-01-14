@@ -17,82 +17,104 @@ function saveData() {
 
 // Webhook handler
 module.exports = async (req, res) => {
-    const events = req.body.events;
-    for (let event of events) {
-        const userId = event.source.userId;
-        if (event.type === 'message' && event.message.type === 'text') {
-            const userMessage = event.message.text.toLowerCase().trim(); // Convert to lowercase and trim
+    try {
+        const events = req.body.events;
+        if (!events) {
+            res.status(400).send('No events data');
+            return;
+        }
 
-            // Commands
-            if (userMessage === "mypoints") {
-                const message = getUserPoints(userId);
-                await replyToUser(event.replyToken, message);
-            } else if (userMessage === "viewuid") {
-                await replyToUser(event.replyToken, `Your UserID is: ${userId}`);
-            } else if (userMessage.startsWith("addpoints")) {
-                if (hasBypass(userId)) {
-                    const points = parseInt(userMessage.split(" ")[1]);
-                    if (!isNaN(points)) {
-                        await addPoints(userId, points);
-                        await replyToUser(event.replyToken, `เพิ่ม ${points} คะแนนให้กับบัญชีของคุณ!`);
+        for (let event of events) {
+            const userId = event.source.userId;
+            if (event.type === 'message' && event.message.type === 'text') {
+                const userMessage = event.message.text.toLowerCase().trim(); // Convert to lowercase and trim
+
+                // Commands
+                if (userMessage === "mypoints") {
+                    const message = getUserPoints(userId);
+                    await replyToUser(event.replyToken, message);
+                } else if (userMessage === "viewuid") {
+                    await replyToUser(event.replyToken, `Your UserID is: ${userId}`);
+                } else if (userMessage.startsWith("addpoints")) {
+                    if (hasBypass(userId)) {
+                        const points = parseInt(userMessage.split(" ")[1]);
+                        if (!isNaN(points)) {
+                            await addPoints(userId, points);
+                            await replyToUser(event.replyToken, `เพิ่ม ${points} คะแนนให้กับบัญชีของคุณ!`);
+                        } else {
+                            await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้องเพื่อเพิ่ม.");
+                        }
                     } else {
-                        await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้องเพื่อเพิ่ม.");
+                        await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการเพิ่มคะแนน.");
+                    }
+                } else if (userMessage.startsWith("removepoints")) {
+                    if (hasBypass(userId)) {
+                        const points = parseInt(userMessage.split(" ")[1]);
+                        if (!isNaN(points)) {
+                            await removePoints(userId, points);
+                            await replyToUser(event.replyToken, `ลบ ${points} คะแนนจากบัญชีของคุณ.`);
+                        } else {
+                            await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้องเพื่อลบ.");
+                        }
+                    } else {
+                        await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการลบคะแนน.");
+                    }
+                } else if (userMessage.startsWith("bypass")) {
+                    const secretCode = userMessage.split(" ")[1];
+                    if (secretCode === "byp@ss") {
+                        grantBypass(userId);
+                        await replyToUser(event.replyToken, "คุณได้รับสิทธิ์ในการข้ามการตรวจสอบ.");
+                    } else {
+                        await replyToUser(event.replyToken, "รหัสลับไม่ถูกต้อง. การเข้าถึงถูกปฏิเสธ.");
                     }
                 } else {
-                    await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการเพิ่มคะแนน.");
+                    await replyToUser(event.replyToken, "คำสั่งที่มีอยู่: 'mypoints', 'viewuid', 'addpoints <number>', 'removepoints <number>'");
                 }
-            } else if (userMessage.startsWith("removepoints")) {
-                if (hasBypass(userId)) {
-                    const points = parseInt(userMessage.split(" ")[1]);
-                    if (!isNaN(points)) {
-                        await removePoints(userId, points);
-                        await replyToUser(event.replyToken, `ลบ ${points} คะแนนจากบัญชีของคุณ.`);
-                    } else {
-                        await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้องเพื่อลบ.");
-                    }
-                } else {
-                    await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการลบคะแนน.");
-                }
-            } else if (userMessage.startsWith("bypass")) {
-                const secretCode = userMessage.split(" ")[1];
-                if (secretCode === "byp@ss") {
-                    grantBypass(userId);
-                    await replyToUser(event.replyToken, "คุณได้รับสิทธิ์ในการข้ามการตรวจสอบ.");
-                } else {
-                    await replyToUser(event.replyToken, "รหัสลับไม่ถูกต้อง. การเข้าถึงถูกปฏิเสธ.");
-                }
-            } else {
-                await replyToUser(event.replyToken, "คำสั่งที่มีอยู่: 'mypoints', 'viewuid', 'addpoints <number>', 'removepoints <number>'");
             }
         }
+        res.status(200).send('OK');
+    } catch (error) {
+        console.error('Error processing webhook:', error);
+        res.status(500).send('Internal Server Error');
     }
-    res.status(200).send('OK');
 };
 
 // Add points to user
 async function addPoints(userId, points) {
-    if (!data.users[userId]) {
-        const userName = await getUserName(userId);
-        data.users[userId] = { name: userName, points: 0 };
+    try {
+        if (!data.users[userId]) {
+            const userName = await getUserName(userId);
+            data.users[userId] = { name: userName, points: 0 };
+        }
+        data.users[userId].points += points;
+        saveData();
+    } catch (error) {
+        console.error('Error adding points:', error);
     }
-    data.users[userId].points += points;
-    saveData();
 }
 
 // Remove points from user
 async function removePoints(userId, points) {
-    if (data.users[userId]) {
-        data.users[userId].points = Math.max(0, data.users[userId].points - points);
-        saveData();
+    try {
+        if (data.users[userId]) {
+            data.users[userId].points = Math.max(0, data.users[userId].points - points);
+            saveData();
+        }
+    } catch (error) {
+        console.error('Error removing points:', error);
     }
 }
 
 // Grant bypass permission
 function grantBypass(userId) {
-    if (!data.bypass) data.bypass = [];
-    if (!data.bypass.includes(userId)) {
-        data.bypass.push(userId);
-        saveData();
+    try {
+        if (!data.bypass) data.bypass = [];
+        if (!data.bypass.includes(userId)) {
+            data.bypass.push(userId);
+            saveData();
+        }
+    } catch (error) {
+        console.error('Error granting bypass:', error);
     }
 }
 
