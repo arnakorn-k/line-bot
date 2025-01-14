@@ -68,7 +68,7 @@ app.post('/webhook', async (req, res) => {
                     await replyToUser(event.replyToken, "รหัสลับไม่ถูกต้อง. การเข้าถึงถูกปฏิเสธ.");
                 }
             } else {
-                await replyToUser(event.replyToken, "คำสั่งที่มีอยู่: 'mypoints', 'viewuid', 'addpoints <number>', 'removepoints <number>', หรือ 'bypass <secretcode>'");
+                await replyToUser(event.replyToken, "คำสั่งที่มีอยู่: 'mypoints', 'viewuid', 'addpoints <number>', 'removepoints <number>'");
             }
         }
     }
