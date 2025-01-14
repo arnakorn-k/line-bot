@@ -1,16 +1,13 @@
 {
-  "name": "line-bot",
+  "name": "line-bot-recycle",
   "version": "1.0.0",
+  "description": "LINE Bot with points system for recycling bottles and cans",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "@line/bot-sdk": "^9.5.0",
+    "axios": "^1.7.9",
     "body-parser": "^1.20.3",
     "express": "^4.21.2"
   }
