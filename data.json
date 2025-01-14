@@ -1,12 +1,11 @@
 {
   "users": {
     "U72603031b054b8830044b3de214c8c47": {
-      "name": "Unknown",
-      "points": 1
-    },
-    "U507a04b86c285fb06130651c8fe26350": {
-      "name": "Unknown",
-      "points": 1000000
+      "name": "ダンダン ( ดังดัง )",
+      "points": 10000
     }
-  }
+  },
+  "bypass": [
+    "U72603031b054b8830044b3de214c8c47"
+  ]
 }
