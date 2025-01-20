@@ -1,21 +1,24 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
-const fs = require('fs');
+const admin = require('firebase-admin');
+const serviceAccount = require('./serviceAccountKey.json');
+
+// Firebase Realtime Database URL
+const databaseURL = 'https://database-linebot-e6dd7-default-rtdb.asia-southeast1.firebasedatabase.app/'; // ใส่ URL ของ Firebase Realtime Database ของคุณที่นี่
 
 // LINE API Config
 const LINE_CHANNEL_ACCESS_TOKEN = 'ccLb2V+7NMLd1ZgPHHEz5NUfj9rkehvg3vGNEKPouliQFonC0HeweQf2+0Y/6U+07oR8cUVDFNC9iJD1ylMCf2JWP8keHohVzU+HlV9QV0F71oEYTGOYIT7nLMTrXsTDYU2DlfxJJn9dgY3QhIVJ+gdB04t89/1O/w1cDnyilFU=';
 const LINE_REPLY_API = 'https://api.line.me/v2/bot/message/reply';
 const LINE_PROFILE_API = 'https://api.line.me/v2/bot/profile';
 
-// Load data from JSON file
-const dataFile = 'data.json';
-let data = require(`./${dataFile}`);
+// Initialize Firebase Admin SDK
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: databaseURL // เพิ่มการตั้งค่า URL สำหรับ Realtime Database
+});
 
-// Helper to save data
-function saveData() {
-    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
-}
+const db = admin.database();
 
 // Express setup
 const app = express();
@@ -29,20 +32,26 @@ app.post('/webhook', async (req, res) => {
         if (event.type === 'message' && event.message.type === 'text') {
             const userMessage = event.message.text.toLowerCase().trim(); // Convert to lowercase and trim
 
-            // Commands
+            // เพิ่มข้อมูลของผู้ใช้ทุกครั้งที่พิมพ์คำสั่ง
+            await addUserData(userId);
+
+            // คำสั่งต่างๆ
             if (userMessage === "mypoints") {
-                const message = getUserPoints(userId);
+                const message = await getUserPoints(userId);
+                await replyToUser(event.replyToken, message);
+            } else if (userMessage === "faq") {
+                const message = `คำสั่งที่สามารถใช้ได้:\n- mypoints: ตรวจสอบคะแนนของคุณ\n- viewuid: ดู UserID ของคุณ\n- addpoints <จำนวน>: เพิ่มคะแนน\n- removepoints <จำนวน>: ลบคะแนน\n- bypass: จัดการสิทธิ์ข้ามการตรวจสอบ\n- cancelbypass: ยกเลิกสิทธิ์ข้ามการตรวจสอบ`;
                 await replyToUser(event.replyToken, message);
             } else if (userMessage === "viewuid") {
-                await replyToUser(event.replyToken, `Your UserID is: ${userId}`);
+                await replyToUser(event.replyToken, `UserID ของคุณคือ: ${userId}`);
             } else if (userMessage.startsWith("addpoints")) {
                 if (hasBypass(userId)) {
                     const points = parseInt(userMessage.split(" ")[1]);
                     if (!isNaN(points)) {
                         await addPoints(userId, points);
-                        await replyToUser(event.replyToken, `เพิ่ม ${points} คะแนนให้กับบัญชีของคุณ!`);
+                        await replyToUser(event.replyToken, `เพิ่ม ${points} คะแนนให้กับบัญชีของคุณเรียบร้อยแล้ว!`);
                     } else {
-                        await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้องเพื่อเพิ่ม.");
+                        await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้อง.");
                     }
                 } else {
                     await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการเพิ่มคะแนน.");
@@ -52,62 +61,98 @@ app.post('/webhook', async (req, res) => {
                     const points = parseInt(userMessage.split(" ")[1]);
                     if (!isNaN(points)) {
                         await removePoints(userId, points);
-                        await replyToUser(event.replyToken, `ลบ ${points} คะแนนจากบัญชีของคุณ.`);
+                        await replyToUser(event.replyToken, `ลบ ${points} คะแนนจากบัญชีของคุณเรียบร้อยแล้ว.`);
                     } else {
-                        await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้องเพื่อลบ.");
+                        await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้อง.");
                     }
                 } else {
                     await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการลบคะแนน.");
                 }
             } else if (userMessage.startsWith("bypass")) {
                 const secretCode = userMessage.split(" ")[1];
+
                 if (secretCode === "byp@ss") {
                     grantBypass(userId);
-                    await replyToUser(event.replyToken, "คุณได้รับสิทธิ์ในการข้ามการตรวจสอบ.");
+                    await replyToUser(event.replyToken, "คุณได้รับสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
                 } else {
-                    await replyToUser(event.replyToken, "รหัสลับไม่ถูกต้อง. การเข้าถึงถูกปฏิเสธ.");
+                    await replyToUser(event.replyToken, "รหัสลับไม่ถูกต้อง.");
                 }
+            } else if (userMessage.startsWith("cancelbypass")) {
+                revokeBypass(userId);
+                await replyToUser(event.replyToken, "คุณได้ยกเลิกสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
             } else {
-                await replyToUser(event.replyToken, "คำสั่งที่มีอยู่: 'mypoints', 'viewuid', 'addpoints <number>', 'removepoints <number>'");
+                await replyToUser(event.replyToken, "คำสั่งที่คุณป้อนมาไม่ถูกต้อง. กรุณาใช้คำสั่ง 'faq' เพื่อดูคำสั่งที่ใช้ได้.");
             }
         }
     }
     res.status(200).send('OK');
 });
 
-// Add points to user
-async function addPoints(userId, points) {
-    if (!data.users[userId]) {
+// ฟังก์ชันที่เพิ่มข้อมูลผู้ใช้ใน Firebase
+async function addUserData(userId) {
+    const userRef = db.ref('users/' + userId);
+    const userSnapshot = await userRef.once('value');
+    const userData = userSnapshot.val();
+
+    if (!userData) {
         const userName = await getUserName(userId);
-        data.users[userId] = { name: userName, points: 0 };
+        userRef.set({ 
+            name: userName, 
+            userId: userId, 
+            points: 0 
+        });
     }
-    data.users[userId].points += points;
-    saveData();
 }
 
-// Remove points from user
+// เพิ่มคะแนนให้ผู้ใช้
+async function addPoints(userId, points) {
+    const userRef = db.ref('users/' + userId);
+    const userSnapshot = await userRef.once('value');
+    const userData = userSnapshot.val();
+
+    if (!userData) {
+        const userName = await getUserName(userId);
+        userRef.set({ name: userName, points: 0 });
+    }
+    await userRef.update({
+        points: (userData ? userData.points : 0) + points
+    });
+}
+
+// ลบคะแนนจากผู้ใช้
 async function removePoints(userId, points) {
-    if (data.users[userId]) {
-        data.users[userId].points = Math.max(0, data.users[userId].points - points);
-        saveData();
+    const userRef = db.ref('users/' + userId);
+    const userSnapshot = await userRef.once('value');
+    const userData = userSnapshot.val();
+
+    if (userData) {
+        const currentPoints = userData.points || 0;
+        await userRef.update({
+            points: Math.max(0, currentPoints - points)
+        });
     }
 }
 
-// Grant bypass permission
-function grantBypass(userId) {
-    if (!data.bypass) data.bypass = [];
-    if (!data.bypass.includes(userId)) {
-        data.bypass.push(userId);
-        saveData();
-    }
+// เพิ่มสิทธิ์ bypass
+async function grantBypass(userId) {
+    const bypassRef = db.ref('bypass/' + userId);
+    await bypassRef.set({ granted: true });
 }
 
-// Check if user has bypass access
-function hasBypass(userId) {
-    return data.bypass && data.bypass.includes(userId);
+// ยกเลิกสิทธิ์ bypass
+async function revokeBypass(userId) {
+    const bypassRef = db.ref('bypass/' + userId);
+    await bypassRef.remove();
 }
 
-// Fetch user's display name
+// ตรวจสอบว่า user มีสิทธิ์ bypass หรือไม่
+async function hasBypass(userId) {
+    const bypassRef = db.ref('bypass/' + userId);
+    const bypassSnapshot = await bypassRef.once('value');
+    return bypassSnapshot.exists();
+}
+
+// ดึงชื่อผู้ใช้จาก LINE API
 async function getUserName(userId) {
     try {
         const response = await axios.get(`${LINE_PROFILE_API}/${userId}`, {
@@ -118,19 +163,23 @@ async function getUserName(userId) {
         return response.data.displayName;
     } catch (error) {
         console.error('Error fetching user profile:', error.response?.data || error.message);
-        return 'Unknown';
+        return 'ไม่ทราบชื่อ';
     }
 }
 
-// Get user points
-function getUserPoints(userId) {
-    if (data.users[userId]) {
-        return `คุณมีคะแนนทั้งหมด ${data.users[userId].points} คะแนน (ชื่อ: ${data.users[userId].name}).`;
+// แสดงคะแนนของผู้ใช้
+async function getUserPoints(userId) {
+    const userRef = db.ref('users/' + userId);
+    const userSnapshot = await userRef.once('value');
+    const userData = userSnapshot.val();
+
+    if (userData) {
+        return `คุณมีคะแนนทั้งหมด ${userData.points} คะแนน (ชื่อ: ${userData.name}).`;
     }
     return "คุณไม่มีคะแนนในระบบ.";
 }
 
-// Reply to user
+// ส่งข้อความไปยังผู้ใช้
 async function replyToUser(replyToken, message) {
     try {
         await axios.post(
@@ -161,3 +210,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
+
