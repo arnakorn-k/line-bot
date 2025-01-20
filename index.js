@@ -1,24 +1,22 @@
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const admin = require('firebase-admin');
-const serviceAccount = require('./serviceAccountKey.json');
 
-// Firebase Realtime Database URL
-const databaseURL = 'https://database-linebot-e6dd7-default-rtdb.asia-southeast1.firebasedatabase.app/'; // ใส่ URL ของ Firebase Realtime Database ของคุณที่นี่
-
-// LINE API Config
-const LINE_CHANNEL_ACCESS_TOKEN = 'ccLb2V+7NMLd1ZgPHHEz5NUfj9rkehvg3vGNEKPouliQFonC0HeweQf2+0Y/6U+07oR8cUVDFNC9iJD1ylMCf2JWP8keHohVzU+HlV9QV0F71oEYTGOYIT7nLMTrXsTDYU2DlfxJJn9dgY3QhIVJ+gdB04t89/1O/w1cDnyilFU=';
-const LINE_REPLY_API = 'https://api.line.me/v2/bot/message/reply';
-const LINE_PROFILE_API = 'https://api.line.me/v2/bot/profile';
-
-// Initialize Firebase Admin SDK
+// Initialize Firebase Admin SDK with service account JSON
+const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: databaseURL // เพิ่มการตั้งค่า URL สำหรับ Realtime Database
+  databaseURL: process.env.DATABASE_URL // Firebase Realtime Database URL
 });
 
 const db = admin.database();
+
+// LINE API Config
+const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+const LINE_REPLY_API = 'https://api.line.me/v2/bot/message/reply';
+const LINE_PROFILE_API = 'https://api.line.me/v2/bot/profile';
 
 // Express setup
 const app = express();
@@ -45,7 +43,7 @@ app.post('/webhook', async (req, res) => {
             } else if (userMessage === "viewuid") {
                 await replyToUser(event.replyToken, `UserID ของคุณคือ: ${userId}`);
             } else if (userMessage.startsWith("addpoints")) {
-                if (hasBypass(userId)) {
+                if (await hasBypass(userId)) {
                     const points = parseInt(userMessage.split(" ")[1]);
                     if (!isNaN(points)) {
                         await addPoints(userId, points);
@@ -57,7 +55,7 @@ app.post('/webhook', async (req, res) => {
                     await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการเพิ่มคะแนน.");
                 }
             } else if (userMessage.startsWith("removepoints")) {
-                if (hasBypass(userId)) {
+                if (await hasBypass(userId)) {
                     const points = parseInt(userMessage.split(" ")[1]);
                     if (!isNaN(points)) {
                         await removePoints(userId, points);
@@ -72,13 +70,13 @@ app.post('/webhook', async (req, res) => {
                 const secretCode = userMessage.split(" ")[1];
 
                 if (secretCode === "byp@ss") {
-                    grantBypass(userId);
+                    await grantBypass(userId);
                     await replyToUser(event.replyToken, "คุณได้รับสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
                 } else {
                     await replyToUser(event.replyToken, "รหัสลับไม่ถูกต้อง.");
                 }
             } else if (userMessage.startsWith("cancelbypass")) {
-                revokeBypass(userId);
+                await revokeBypass(userId);
                 await replyToUser(event.replyToken, "คุณได้ยกเลิกสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
             } else {
                 await replyToUser(event.replyToken, "คำสั่งที่คุณป้อนมาไม่ถูกต้อง. กรุณาใช้คำสั่ง 'faq' เพื่อดูคำสั่งที่ใช้ได้.");
@@ -210,4 +208,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
-
