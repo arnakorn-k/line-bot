@@ -1,98 +1,93 @@
-require('dotenv').config({ path: './.env' });  // โหลด .env เฉพาะใน local
+require('dotenv').config({ path: './.env' });
 
+const express = require('express');
+const bodyParser = require('body-parser');
 const axios = require('axios');
 const admin = require('firebase-admin');
-const express = require('express');
-const app = express();
+const serviceAccount = require('./serviceAccountKey.json');
 
-// ตรวจสอบว่าไฟล์ JSON ของ Firebase ถูกโหลดหรือไม่
-if (!process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-  throw new Error("FIREBASE_SERVICE_ACCOUNT_PATH environment variable is missing");
-}
+// Firebase Realtime Database URL
+const databaseURL = process.env.DATABASE_URL;
 
-// ใช้เส้นทางของไฟล์ JSON สำหรับ Local และ URL สำหรับ Vercel
-const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_PATH.startsWith('http')
-  ? require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH) // สำหรับ URL ของ Firebase Key บน Vercel
-  : require(`./${process.env.FIREBASE_SERVICE_ACCOUNT_PATH}`);  // สำหรับ Local path
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: process.env.DATABASE_URL,
-});
-
-const db = admin.database();
-const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+// LINE API Config
+const LINE_CHANNEL_ACCESS_TOKEN = process.env.CHANNEL_ACCESS_TOKEN;
 const LINE_REPLY_API = 'https://api.line.me/v2/bot/message/reply';
 const LINE_PROFILE_API = 'https://api.line.me/v2/bot/profile';
 
-app.use(express.json());  // ใช้ express json middleware สำหรับรับข้อมูล POST ที่เป็น JSON
+// Initialize Firebase Admin SDK
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: databaseURL
+});
 
+const db = admin.database();
+
+// Express setup
+const app = express();
+app.use(bodyParser.json());
+
+// Webhook endpoint
 app.post('/webhook', async (req, res) => {
-  if (req.method === 'POST') {
-    const events = req.body.events;
-    for (let event of events) {
-      const userId = event.source.userId;
-      
-      // ตรวจสอบว่า userId ถูกต้อง
-      if (!userId) {
-        console.error('Error: Missing userId from event source');
-        continue;
-      }
+  const events = req.body.events;
+  for (let event of events) {
+    const userId = event.source.userId;
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userMessage = event.message.text.toLowerCase().trim(); // Convert to lowercase and trim
 
-      if (event.type === 'message' && event.message.type === 'text') {
-        const userMessage = event.message.text.toLowerCase().trim();
-        await addUserData(userId);
+      // เพิ่มข้อมูลของผู้ใช้ทุกครั้งที่พิมพ์คำสั่ง
+      await addUserData(userId);
 
-        if (userMessage === "mypoints") {
-          const message = await getUserPoints(userId);
-          await replyToUser(event.replyToken, message);
-        } else if (userMessage === "faq") {
-          const message = `คำสั่งที่สามารถใช้ได้:\n- mypoints: ตรวจสอบคะแนนของคุณ\n- viewuid: ดู UserID ของคุณ\n- addpoints <จำนวน>: เพิ่มคะแนน\n- removepoints <จำนวน>: ลบคะแนน\n- bypass: จัดการสิทธิ์ข้ามการตรวจสอบ\n- cancelbypass: ยกเลิกสิทธิ์ข้ามการตรวจสอบ`;
-          await replyToUser(event.replyToken, message);
-        } else if (userMessage === "viewuid") {
-          await replyToUser(event.replyToken, `UserID ของคุณคือ: ${userId}`);
-        } else if (userMessage.startsWith("addpoints")) {
-          if (await hasBypass(userId)) {
-            const points = parseInt(userMessage.split(" ")[1]);
-            if (!isNaN(points)) {
-              await addPoints(userId, points);
-              await replyToUser(event.replyToken, `เพิ่ม ${points} คะแนนให้กับบัญชีของคุณเรียบร้อยแล้ว!`);
-            } else {
-              await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้อง.");
-            }
+      // คำสั่งต่างๆ
+      if (userMessage === "mypoints") {
+        const message = await getUserPoints(userId);
+        await replyToUser(event.replyToken, message);
+      } else if (userMessage === "faq") {
+        const message = `คำสั่งที่สามารถใช้ได้:\n- mypoints: ตรวจสอบคะแนนของคุณ\n- viewuid: ดู UserID ของคุณ\n- addpoints <จำนวน>: เพิ่มคะแนน\n- removepoints <จำนวน>: ลบคะแนน\n- bypass: จัดการสิทธิ์ข้ามการตรวจสอบ\n- cancelbypass: ยกเลิกสิทธิ์ข้ามการตรวจสอบ`;
+        await replyToUser(event.replyToken, message);
+      } else if (userMessage === "viewuid") {
+        await replyToUser(event.replyToken, `UserID ของคุณคือ: ${userId}`);
+      } else if (userMessage.startsWith("addpoints")) {
+        if (await hasBypass(userId)) {
+          const points = parseInt(userMessage.split(" ")[1]);
+          if (!isNaN(points)) {
+            await addPoints(userId, points);
+            await replyToUser(event.replyToken, `เพิ่ม ${points} คะแนนให้กับบัญชีของคุณเรียบร้อยแล้ว!`);
           } else {
-            await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการเพิ่มคะแนน.");
+            await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้อง.");
           }
-        } else if (userMessage.startsWith("removepoints")) {
-          if (await hasBypass(userId)) {
-            const points = parseInt(userMessage.split(" ")[1]);
-            if (!isNaN(points)) {
-              await removePoints(userId, points);
-              await replyToUser(event.replyToken, `ลบ ${points} คะแนนจากบัญชีของคุณเรียบร้อยแล้ว.`);
-            } else {
-              await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้อง.");
-            }
-          } else {
-            await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการลบคะแนน.");
-          }
-        } else if (userMessage.startsWith("bypass")) {
-          const secretCode = userMessage.split(" ")[1];
-          if (secretCode === "byp@ss") {
-            await grantBypass(userId);
-            await replyToUser(event.replyToken, "คุณได้รับสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
-          } else {
-            await replyToUser(event.replyToken, "รหัสลับไม่ถูกต้อง.");
-          }
-        } else if (userMessage.startsWith("cancelbypass")) {
-          await revokeBypass(userId);
-          await replyToUser(event.replyToken, "คุณได้ยกเลิกสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
         } else {
-          await replyToUser(event.replyToken, "คำสั่งที่คุณป้อนมาไม่ถูกต้อง. กรุณาใช้คำสั่ง 'faq' เพื่อดูคำสั่งที่ใช้ได้.");
+          await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการเพิ่มคะแนน.");
         }
+      } else if (userMessage.startsWith("removepoints")) {
+        if (await hasBypass(userId)) {
+          const points = parseInt(userMessage.split(" ")[1]);
+          if (!isNaN(points)) {
+            await removePoints(userId, points);
+            await replyToUser(event.replyToken, `ลบ ${points} คะแนนจากบัญชีของคุณเรียบร้อยแล้ว.`);
+          } else {
+            await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้อง.");
+          }
+        } else {
+          await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการลบคะแนน.");
+        }
+      } else if (userMessage.startsWith("bypass")) {
+        const secretCode = userMessage.split(" ")[1];
+
+        if (secretCode === "byp@ss") {
+          await grantBypass(userId);
+          await replyToUser(event.replyToken, "คุณได้รับสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
+        } else {
+          await replyToUser(event.replyToken, "รหัสลับไม่ถูกต้อง.");
+        }
+      } else if (userMessage.startsWith("cancelbypass")) {
+        await revokeBypass(userId);
+        await replyToUser(event.replyToken, "คุณได้ยกเลิกสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
+      } else {
+        await replyToUser(event.replyToken, "คำสั่งที่คุณป้อนมาไม่ถูกต้อง. กรุณาใช้คำสั่ง 'faq' เพื่อดูคำสั่งที่ใช้ได้.");
       }
     }
-    return res.status(200).send('OK');
   }
+  res.status(200).send('OK');
 });
 
 // ฟังก์ชันที่เพิ่มข้อมูลผู้ใช้ใน Firebase
@@ -100,9 +95,14 @@ async function addUserData(userId) {
   const userRef = db.ref('users/' + userId);
   const userSnapshot = await userRef.once('value');
   const userData = userSnapshot.val();
+
   if (!userData) {
     const userName = await getUserName(userId);
-    userRef.set({ name: userName, userId: userId, points: 0 });
+    userRef.set({
+      name: userName,
+      userId: userId,
+      points: 0
+    });
   }
 }
 
