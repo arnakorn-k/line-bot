@@ -59,6 +59,14 @@ app.post('/webhook', async (req, res) => {
             await handleMyPoints(event.replyToken, userId);
             continue;
           }
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            await handleUserDetails(event.replyToken, userId);
+            continue;
+          }
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
         }
         
         // ตอบกลับเมื่อเป็นข้อความอื่นหรือสติกเกอร์
@@ -76,10 +84,11 @@ async function handleMyPoints(replyToken, userId) {
   const userData = userSnapshot.val();
 
   if (userData) {
-    const maskedUserId = maskUID(userData.userId);
+    const maskedUserId = maskUID(userData.userId); // ปกปิด UID
     const points = userData.points || 0;
+    const userName = userData.name || "ไม่ทราบชื่อ";
 
-    // Flex Message template
+    // Flex Message template สำหรับแสดงข้อมูลพื้นฐาน
     const flexMessage = {
       type: "flex",
       altText: "แต้มสะสมของคุณ",
@@ -115,13 +124,26 @@ async function handleMyPoints(replyToken, userId) {
               contents: [
                 {
                   type: "text",
-                  text: "บัญชีที่ได้รับแต้ม",
+                  text: "ชื่อผู้ใช้",
                   color: "#aaaaaa",
                   size: "sm"
                 },
                 {
                   type: "text",
-                  text: maskedUserId,
+                  text: userName,
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                },
+                {
+                  type: "text",
+                  text: "User ID",
+                  color: "#aaaaaa",
+                  size: "sm"
+                },
+                {
+                  type: "text",
+                  text: maskedUserId,  // แสดง User ID แบบปกปิด
                   weight: "bold",
                   size: "md",
                   color: "#333333"
@@ -151,9 +173,9 @@ async function handleMyPoints(replyToken, userId) {
               style: "primary",
               color: "#1DB446",
               action: {
-                type: "uri",
-                label: "ดูรายละเอียด",
-                uri: "https://line-bot-navy.vercel.app/"
+                type: "message",
+                label: "ดูรายละเอียด",  // ชื่อปุ่มยังคงเป็น "ดูรายละเอียด"
+                text: "mypoints > ดูรายละเอียด"  // แต่คำสั่งที่ส่งเป็น "mypoints > ดูรายละเอียด"
               },
               margin: "lg"
             }
@@ -168,9 +190,252 @@ async function handleMyPoints(replyToken, userId) {
   }
 }
 
+// ฟังก์ชันแสดงรายละเอียดทั้งหมดของผู้ใช้
+async function handleUserDetails(replyToken, userId) {
+  const userRef = db.ref('users/' + userId);
+  const userSnapshot = await userRef.once('value');
+  const userData = userSnapshot.val();
+
+  if (userData) {
+    const points = userData.points || 0;
+    const userName = userData.name || "ไม่ทราบชื่อ";
+
+    // Flex Message template สำหรับแสดงข้อมูลทั้งหมด
+    const flexMessage = {
+      type: "flex",
+      altText: "ข้อมูลรายละเอียดของคุณ",
+      contents: {
+        type: "bubble",
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            {
+              type: "text",
+              text: "ข้อมูลของคุณ",
+              weight: "bold",
+              size: "xl",
+              color: "#1DB446"
+            },
+            {
+              type: "text",
+              text: `${getCurrentDateTime()}`,  // ใช้เวลาปัจจุบันจากฟังก์ชันที่แก้ไขแล้ว
+              size: "sm",
+              color: "#888888",
+              margin: "md"
+            },
+            {
+              type: "separator",
+              margin: "lg"
+            },
+            {
+              type: "box",
+              layout: "vertical",
+              margin: "lg",
+              spacing: "sm",
+              contents: [
+                {
+                  type: "text",
+                  text: "ชื่อผู้ใช้",
+                  color: "#aaaaaa",
+                  size: "sm"
+                },
+                {
+                  type: "text",
+                  text: userName,
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                },
+                {
+                  type: "text",
+                  text: "User ID",
+                  color: "#aaaaaa",
+                  size: "sm"
+                },
+                {
+                  type: "text",
+                  text: userData.userId,  // แสดง User ID แบบเต็ม
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                },
+                {
+                  type: "text",
+                  text: "แต้มคงเหลือ",
+                  color: "#aaaaaa",
+                  size: "sm",
+                  margin: "md"
+                },
+                {
+                  type: "text",
+                  text: `${points} แต้ม`,
+                  weight: "bold",
+                  size: "xl",
+                  color: "#1DB446"
+                },
+                {
+                  type: "text",
+                  text: "วันที่สร้างบัญชี",
+                  color: "#aaaaaa",
+                  size: "sm",
+                  margin: "md"
+                },
+                {
+                  type: "text",
+                  text: userData.createdAt,
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                }
+              ]
+            },
+            {
+              type: "separator",
+              margin: "lg"
+            },
+            {
+              type: "button",
+              style: "primary",
+              color: "#1DB446",
+              action: {
+                type: "message",
+                label: "กลับไปที่หน้าแรก",
+                text: "mypoints"  // กลับไปที่ข้อความหลักเมื่อกดปุ่ม
+              },
+              margin: "lg"
+            }
+          ]
+        }
+      }
+    };
+
+    await replyWithFlexMessage(replyToken, flexMessage);
+  } else {
+    await replyToUser(replyToken, "ไม่พบข้อมูลของคุณ.");
+  }
+}
+
+// ฟังก์ชันแสดงข้อมูลโปรไฟล์ของผู้ใช้
+async function handleUserProfile(replyToken, userId) {
+  const userRef = db.ref('users/' + userId);
+  const userSnapshot = await userRef.once('value');
+  const userData = userSnapshot.val();
+
+  if (userData) {
+    const userName = userData.name || "ไม่ทราบชื่อ";
+    const points = userData.points || 0;
+    const createdAt = userData.createdAt || "ไม่ทราบเวลา";
+    const userUID = userData.userId; // ดึง User ID เต็ม
+
+    // Flex Message template สำหรับแสดงข้อมูลโปรไฟล์
+    const flexMessage = {
+      type: "flex",
+      altText: "ข้อมูลโปรไฟล์ของคุณ",
+      contents: {
+        type: "bubble",
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            {
+              type: "text",
+              text: "ข้อมูลโปรไฟล์ของคุณ",
+              weight: "bold",
+              size: "xl",
+              color: "#1DB446"
+            },
+            {
+              type: "text",
+              text: `${getCurrentDateTime()}`,  // ใช้เวลาปัจจุบันจากฟังก์ชันที่แก้ไขแล้ว
+              size: "sm",
+              color: "#888888",
+              margin: "md"
+            },
+            {
+              type: "separator",
+              margin: "lg"
+            },
+            {
+              type: "box",
+              layout: "vertical",
+              margin: "lg",
+              spacing: "sm",
+              contents: [
+                {
+                  type: "text",
+                  text: "ชื่อผู้ใช้",
+                  color: "#aaaaaa",
+                  size: "sm"
+                },
+                {
+                  type: "text",
+                  text: userName,
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                },
+                {
+                  type: "text",
+                  text: "User ID",
+                  color: "#aaaaaa",
+                  size: "sm"
+                },
+                {
+                  type: "text",
+                  text: userUID,  // แสดง User ID เต็ม
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                },
+                {
+                  type: "text",
+                  text: "แต้มคงเหลือ",
+                  color: "#aaaaaa",
+                  size: "sm",
+                  margin: "md"
+                },
+                {
+                  type: "text",
+                  text: `${points} แต้ม`,
+                  weight: "bold",
+                  size: "xl",
+                  color: "#1DB446"
+                },
+                {
+                  type: "text",
+                  text: "วันที่สร้างบัญชี",
+                  color: "#aaaaaa",
+                  size: "sm",
+                  margin: "md"
+                },
+                {
+                  type: "text",
+                  text: createdAt,
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                }
+              ]
+            },
+            {
+              type: "separator",
+              margin: "lg"
+            }
+          ]
+        }
+      }
+    };
+
+    await replyWithFlexMessage(replyToken, flexMessage);
+  } else {
+    await replyToUser(replyToken, "ไม่พบข้อมูลโปรไฟล์ของคุณ.");
+  }
+}
+
 // ฟังก์ชันปกปิดเลข UID บางส่วนเพื่อความปลอดภัย
 function maskUID(uid) {
-  return uid.substring(0, 4) + "xxxx";
+  return uid.substring(0, 4) + "xxxx";  // ปกปิด User ID บางส่วน
 }
 
 // ฟังก์ชันดึงเวลาปัจจุบันในรูปแบบที่ต้องการ (เวลาไทย)
@@ -203,7 +468,7 @@ async function addUserData(userId) {
     await userRef.set({
       name: userName,
       userId: userId,
-      points: 10, // ให้แต้มเริ่มต้น
+      points: 0, // ไม่ให้แต้มเริ่มต้น
       createdAt: new Date().toISOString()
     });
     console.log(`สร้างข้อมูลใหม่สำหรับผู้ใช้: ${userName}`);
