@@ -82,7 +82,7 @@ async function handleMyPoints(replyToken, userId) {
     // Flex Message template
     const flexMessage = {
       type: "flex",
-      altText: "รายการแต้มของคุณ",
+      altText: "แต้มสะสมของคุณ",
       contents: {
         type: "bubble",
         body: {
@@ -91,14 +91,14 @@ async function handleMyPoints(replyToken, userId) {
           contents: [
             {
               type: "text",
-              text: "รายการแต้มเข้า",
+              text: "แต้มสะสมของคุณ",
               weight: "bold",
               size: "xl",
               color: "#1DB446"
             },
             {
               type: "text",
-              text: `${getCurrentDateTime()}`,
+              text: `${getCurrentDateTime()}`,  // ใช้เวลาปัจจุบันจากฟังก์ชันที่แก้ไขแล้ว
               size: "sm",
               color: "#888888",
               margin: "md"
@@ -128,21 +128,7 @@ async function handleMyPoints(replyToken, userId) {
                 },
                 {
                   type: "text",
-                  text: "จำนวนแต้มที่ได้รับ",
-                  color: "#aaaaaa",
-                  size: "sm",
-                  margin: "md"
-                },
-                {
-                  type: "text",
-                  text: "10 แต้ม",
-                  weight: "bold",
-                  size: "xl",
-                  color: "#1DB446"
-                },
-                {
-                  type: "text",
-                  text: "แต้มคงเหลือในบัญชี",
+                  text: "แต้มคงเหลือ",
                   color: "#aaaaaa",
                   size: "sm",
                   margin: "md"
@@ -151,8 +137,8 @@ async function handleMyPoints(replyToken, userId) {
                   type: "text",
                   text: `${points} แต้ม`,
                   weight: "bold",
-                  size: "md",
-                  color: "#333333"
+                  size: "xl",
+                  color: "#1DB446"
                 }
               ]
             },
@@ -178,7 +164,7 @@ async function handleMyPoints(replyToken, userId) {
 
     await replyWithFlexMessage(replyToken, flexMessage);
   } else {
-    await replyToUser(replyToken, "ไม่พบข้อมูลคะแนนของคุณ.");
+    await replyToUser(replyToken, "ไม่พบข้อมูลแต้มของคุณ.");
   }
 }
 
@@ -187,16 +173,23 @@ function maskUID(uid) {
   return uid.substring(0, 4) + "xxxx";
 }
 
-// ฟังก์ชันดึงเวลาปัจจุบันในรูปแบบที่ต้องการ
+// ฟังก์ชันดึงเวลาปัจจุบันในรูปแบบที่ต้องการ (เวลาไทย)
 function getCurrentDateTime() {
   const now = new Date();
-  return now.toLocaleDateString('th-TH', {
+  
+  // ตั้งค่า timezone เป็น 'Asia/Bangkok'
+  const options = {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  });
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  };
+  
+  // ใช้ toLocaleString เพื่อให้แสดงเวลาในรูปแบบที่ถูกต้อง
+  return now.toLocaleString('th-TH', options);
 }
 
 // ฟังก์ชันเพิ่มข้อมูลผู้ใช้ใน Firebase
