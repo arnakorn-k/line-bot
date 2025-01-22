@@ -19,7 +19,7 @@ const serviceAccount = {
   auth_uri: process.env.GC_AUTH_URI,
   token_uri: process.env.GC_TOKEN_URI,
   auth_provider_x509_cert_url: process.env.GC_AUTH_PROVIDER_X509_CERT_URL,
-  client_x509_cert_url: process.env.GC_CLIENT_X509_CERT_URL
+  client_x509_cert_url: process.env.GC_CLIENT_X509_CERT_URL,
 };
 
 // LINE API Config
@@ -30,7 +30,7 @@ const LINE_PROFILE_API = 'https://api.line.me/v2/bot/profile';
 // Initialize Firebase Admin SDK
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: databaseURL
+  databaseURL: databaseURL,
 });
 
 const db = admin.database();
@@ -44,66 +44,162 @@ app.post('/webhook', async (req, res) => {
   const events = req.body.events;
   for (let event of events) {
     const userId = event.source.userId;
-    if (event.type === 'message' && event.message.type === 'text') {
-      const userMessage = event.message.text.toLowerCase().trim(); // Convert to lowercase and trim
 
-      // เพิ่มข้อมูลของผู้ใช้ทุกครั้งที่พิมพ์คำสั่ง
-      await addUserData(userId);
+    // ตรวจสอบว่าผู้ใช้ส่งข้อความหรือสติกเกอร์
+    if (event.type === 'message') {
+      if (event.message.type === 'text' || event.message.type === 'sticker') {
+        
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
 
-      // คำสั่งต่างๆ
-      if (userMessage === "mypoints") {
-        const message = await getUserPoints(userId);
-        await replyToUser(event.replyToken, message);
-      } else if (userMessage === "faq") {
-        const message = `คำสั่งที่สามารถใช้ได้:\n- mypoints: ตรวจสอบคะแนนของคุณ\n- viewuid: ดู UserID ของคุณ\n- addpoints <จำนวน>: เพิ่มคะแนน\n- removepoints <จำนวน>: ลบคะแนน\n- bypass: จัดการสิทธิ์ข้ามการตรวจสอบ\n- cancelbypass: ยกเลิกสิทธิ์ข้ามการตรวจสอบ`;
-        await replyToUser(event.replyToken, message);
-      } else if (userMessage === "viewuid") {
-        await replyToUser(event.replyToken, `UserID ของคุณคือ: ${userId}`);
-      } else if (userMessage.startsWith("addpoints")) {
-        if (await hasBypass(userId)) {
-          const points = parseInt(userMessage.split(" ")[1]);
-          if (!isNaN(points)) {
-            await addPoints(userId, points);
-            await replyToUser(event.replyToken, `เพิ่ม ${points} คะแนนให้กับบัญชีของคุณเรียบร้อยแล้ว!`);
-          } else {
-            await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้อง.");
+        // ตรวจสอบหากเป็นข้อความ "mypoints"
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
           }
-        } else {
-          await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการเพิ่มคะแนน.");
         }
-      } else if (userMessage.startsWith("removepoints")) {
-        if (await hasBypass(userId)) {
-          const points = parseInt(userMessage.split(" ")[1]);
-          if (!isNaN(points)) {
-            await removePoints(userId, points);
-            await replyToUser(event.replyToken, `ลบ ${points} คะแนนจากบัญชีของคุณเรียบร้อยแล้ว.`);
-          } else {
-            await replyToUser(event.replyToken, "กรุณาระบุจำนวนคะแนนที่ถูกต้อง.");
-          }
-        } else {
-          await replyToUser(event.replyToken, "คุณไม่มีสิทธิ์ในการลบคะแนน.");
-        }
-      } else if (userMessage.startsWith("bypass")) {
-        const secretCode = userMessage.split(" ")[1];
-
-        if (secretCode === "byp@ss") {
-          await grantBypass(userId);
-          await replyToUser(event.replyToken, "คุณได้รับสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
-        } else {
-          await replyToUser(event.replyToken, "รหัสลับไม่ถูกต้อง.");
-        }
-      } else if (userMessage.startsWith("cancelbypass")) {
-        await revokeBypass(userId);
-        await replyToUser(event.replyToken, "คุณได้ยกเลิกสิทธิ์ในการข้ามการตรวจสอบแล้ว.");
-      } else {
-        await replyToUser(event.replyToken, "คำสั่งที่คุณป้อนมาไม่ถูกต้อง. กรุณาใช้คำสั่ง 'faq' เพื่อดูคำสั่งที่ใช้ได้.");
+        
+        // ตอบกลับเมื่อเป็นข้อความอื่นหรือสติกเกอร์
+        await replyToUser(event.replyToken, "ได้รับข้อความของคุณแล้ว!");
       }
     }
   }
   res.status(200).send('OK');
 });
 
-// ฟังก์ชันที่เพิ่มข้อมูลผู้ใช้ใน Firebase
+// ฟังก์ชันแสดงแต้มของผู้ใช้
+async function handleMyPoints(replyToken, userId) {
+  const userRef = db.ref('users/' + userId);
+  const userSnapshot = await userRef.once('value');
+  const userData = userSnapshot.val();
+
+  if (userData) {
+    const maskedUserId = maskUID(userData.userId);
+    const points = userData.points || 0;
+
+    // Flex Message template
+    const flexMessage = {
+      type: "flex",
+      altText: "รายการแต้มของคุณ",
+      contents: {
+        type: "bubble",
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            {
+              type: "text",
+              text: "รายการแต้มเข้า",
+              weight: "bold",
+              size: "xl",
+              color: "#1DB446"
+            },
+            {
+              type: "text",
+              text: `${getCurrentDateTime()}`,
+              size: "sm",
+              color: "#888888",
+              margin: "md"
+            },
+            {
+              type: "separator",
+              margin: "lg"
+            },
+            {
+              type: "box",
+              layout: "vertical",
+              margin: "lg",
+              spacing: "sm",
+              contents: [
+                {
+                  type: "text",
+                  text: "บัญชีที่ได้รับแต้ม",
+                  color: "#aaaaaa",
+                  size: "sm"
+                },
+                {
+                  type: "text",
+                  text: maskedUserId,
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                },
+                {
+                  type: "text",
+                  text: "จำนวนแต้มที่ได้รับ",
+                  color: "#aaaaaa",
+                  size: "sm",
+                  margin: "md"
+                },
+                {
+                  type: "text",
+                  text: "10 แต้ม",
+                  weight: "bold",
+                  size: "xl",
+                  color: "#1DB446"
+                },
+                {
+                  type: "text",
+                  text: "แต้มคงเหลือในบัญชี",
+                  color: "#aaaaaa",
+                  size: "sm",
+                  margin: "md"
+                },
+                {
+                  type: "text",
+                  text: `${points} แต้ม`,
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                }
+              ]
+            },
+            {
+              type: "separator",
+              margin: "lg"
+            },
+            {
+              type: "button",
+              style: "primary",
+              color: "#1DB446",
+              action: {
+                type: "uri",
+                label: "ดูรายละเอียด",
+                uri: "https://line-bot-navy.vercel.app/"
+              },
+              margin: "lg"
+            }
+          ]
+        }
+      }
+    };
+
+    await replyWithFlexMessage(replyToken, flexMessage);
+  } else {
+    await replyToUser(replyToken, "ไม่พบข้อมูลคะแนนของคุณ.");
+  }
+}
+
+// ฟังก์ชันปกปิดเลข UID บางส่วนเพื่อความปลอดภัย
+function maskUID(uid) {
+  return uid.substring(0, 4) + "xxxx";
+}
+
+// ฟังก์ชันดึงเวลาปัจจุบันในรูปแบบที่ต้องการ
+function getCurrentDateTime() {
+  const now = new Date();
+  return now.toLocaleDateString('th-TH', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// ฟังก์ชันเพิ่มข้อมูลผู้ใช้ใน Firebase
 async function addUserData(userId) {
   const userRef = db.ref('users/' + userId);
   const userSnapshot = await userRef.once('value');
@@ -111,60 +207,16 @@ async function addUserData(userId) {
 
   if (!userData) {
     const userName = await getUserName(userId);
-    userRef.set({
+    await userRef.set({
       name: userName,
       userId: userId,
-      points: 0
+      points: 10, // ให้แต้มเริ่มต้น
+      createdAt: new Date().toISOString()
     });
+    console.log(`สร้างข้อมูลใหม่สำหรับผู้ใช้: ${userName}`);
+  } else {
+    console.log(`ผู้ใช้งาน ${userData.name} มีข้อมูลแล้ว`);
   }
-}
-
-// เพิ่มคะแนนให้ผู้ใช้
-async function addPoints(userId, points) {
-  const userRef = db.ref('users/' + userId);
-  const userSnapshot = await userRef.once('value');
-  const userData = userSnapshot.val();
-
-  if (!userData) {
-    const userName = await getUserName(userId);
-    userRef.set({ name: userName, points: 0 });
-  }
-  await userRef.update({
-    points: (userData ? userData.points : 0) + points
-  });
-}
-
-// ลบคะแนนจากผู้ใช้
-async function removePoints(userId, points) {
-  const userRef = db.ref('users/' + userId);
-  const userSnapshot = await userRef.once('value');
-  const userData = userSnapshot.val();
-
-  if (userData) {
-    const currentPoints = userData.points || 0;
-    await userRef.update({
-      points: Math.max(0, currentPoints - points)
-    });
-  }
-}
-
-// เพิ่มสิทธิ์ bypass
-async function grantBypass(userId) {
-  const bypassRef = db.ref('bypass/' + userId);
-  await bypassRef.set({ granted: true });
-}
-
-// ยกเลิกสิทธิ์ bypass
-async function revokeBypass(userId) {
-  const bypassRef = db.ref('bypass/' + userId);
-  await bypassRef.remove();
-}
-
-// ตรวจสอบว่า user มีสิทธิ์ bypass หรือไม่
-async function hasBypass(userId) {
-  const bypassRef = db.ref('bypass/' + userId);
-  const bypassSnapshot = await bypassRef.once('value');
-  return bypassSnapshot.exists();
 }
 
 // ดึงชื่อผู้ใช้จาก LINE API
@@ -182,18 +234,6 @@ async function getUserName(userId) {
   }
 }
 
-// แสดงคะแนนของผู้ใช้
-async function getUserPoints(userId) {
-  const userRef = db.ref('users/' + userId);
-  const userSnapshot = await userRef.once('value');
-  const userData = userSnapshot.val();
-
-  if (userData) {
-    return `คุณมีคะแนนทั้งหมด ${userData.points} คะแนน (ชื่อ: ${userData.name}).`;
-  }
-  return "คุณไม่มีคะแนนในระบบ.";
-}
-
 // ส่งข้อความไปยังผู้ใช้
 async function replyToUser(replyToken, message) {
   try {
@@ -201,12 +241,7 @@ async function replyToUser(replyToken, message) {
       LINE_REPLY_API,
       {
         replyToken: replyToken,
-        messages: [
-          {
-            type: 'text',
-            text: message,
-          },
-        ],
+        messages: [{ type: 'text', text: message }],
       },
       {
         headers: {
@@ -217,6 +252,23 @@ async function replyToUser(replyToken, message) {
     );
   } catch (error) {
     console.error('Error replying to user:', error.response?.data || error.message);
+  }
+}
+
+// ฟังก์ชันส่ง Flex Message
+async function replyWithFlexMessage(replyToken, flexMessage) {
+  try {
+    await axios.post(LINE_REPLY_API, {
+      replyToken: replyToken,
+      messages: [flexMessage]
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+    });
+  } catch (error) {
+    console.error('Error sending Flex Message:', error.response?.data || error.message);
   }
 }
 
