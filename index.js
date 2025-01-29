@@ -51,7 +51,6 @@ app.post('/webhook', async (req, res) => {
     const userData = userSnapshot.val();
     const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
 
-    // ตรวจสอบว่าผู้ใช้ส่งข้อความหรือสติกเกอร์
     if (event.type === 'message') {
       if (event.message.type === 'text') {
         console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
@@ -62,17 +61,25 @@ app.post('/webhook', async (req, res) => {
       // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
       await addUserData(userId);
 
-      // ตรวจสอบหากเป็นข้อความ "mypoints"
+      // ตรวจสอบข้อความจากผู้ใช้
       if (event.message.type === 'text') {
         const userMessage = event.message.text.toLowerCase().trim();
+
+        if (userMessage === '!menu') {
+          await replyToUser(event.replyToken, "ขออภัยค่ะขณะนี้ Menu ไม่พร้อมใช้งาน");
+          continue;
+        }
+
         if (userMessage === 'mypoints') {
           await handleMyPoints(event.replyToken, userId);
           continue;
         }
+
         if (userMessage === 'mypoints > ดูรายละเอียด') {
           await handleUserDetails(event.replyToken, userId);
           continue;
         }
+
         if (userMessage === 'myprofile') {
           await handleUserProfile(event.replyToken, userId);
           continue;
