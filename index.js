@@ -84,47 +84,20 @@ app.post('/webhook', async (req, res) => {
           await handleUserProfile(event.replyToken, userId);
           continue;
         }
+
+        // เมื่อผู้ใช้พิมพ์ "myid" ใน LINE Bot
+        if (event.message.text === 'myid') {
+          await client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: `LINE User ID ของคุณคือ: ${userId}\nนำไปกรอกในหน้าเว็บเพื่อเชื่อมบัญชี`
+          });
+          continue;
+        }
       }
     }
   }
   res.status(200).send('OK');
 });
-
-// ฟังก์ชันเพิ่มข้อมูลผู้ใช้ใน Firebase
-async function addUserData(userId) {
-  const userRef = db.ref('users/' + userId);
-  const userSnapshot = await userRef.once('value');
-  const userData = userSnapshot.val();
-
-  if (!userData) {
-    const userName = await getUserName(userId);
-    await userRef.set({
-      name: userName,
-      userId: userId,
-      points: 0, // ไม่ให้แต้มเริ่มต้น
-      createdAt: new Date().toISOString()
-    });
-    console.log(`สร้างข้อมูลใหม่สำหรับผู้ใช้: ${userName}`);
-  }
-}
-
-// ฟังก์ชันเพิ่มข้อมูลผู้ใช้ใน Firebase
-async function addUserData(userId) {
-  const userRef = db.ref('users/' + userId);
-  const userSnapshot = await userRef.once('value');
-  const userData = userSnapshot.val();
-
-  if (!userData) {
-    const userName = await getUserName(userId);
-    await userRef.set({
-      name: userName,
-      userId: userId,
-      points: 0, // ไม่ให้แต้มเริ่มต้น
-      createdAt: new Date().toISOString()
-    });
-    console.log(`สร้างข้อมูลใหม่สำหรับผู้ใช้: ${userName}`);
-  }
-}
 
 // ฟังก์ชันเพิ่มข้อมูลผู้ใช้ใน Firebase
 async function addUserData(userId) {
@@ -502,7 +475,8 @@ async function handleUserProfile(replyToken, userId) {
 
 // ฟังก์ชันปกปิดเลข UID บางส่วนเพื่อความปลอดภัย
 function maskUID(uid) {
-  return uid.substring(0, 4) + "xxxx";  // ปกปิด User ID บางส่วน
+  // แสดงแค่ 5 ตัวแรก
+  return uid.substring(0, 5) + "…"; // เช่น U1234…
 }
 
 // ฟังก์ชันดึงเวลาปัจจุบันในรูปแบบที่ต้องการ (เวลาไทย)
