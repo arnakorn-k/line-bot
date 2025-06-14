@@ -87,10 +87,7 @@ app.post('/webhook', async (req, res) => {
 
         // เมื่อผู้ใช้พิมพ์ "myid" ใน LINE Bot
         if (event.message.text === 'myid') {
-          await client.replyMessage(event.replyToken, {
-            type: 'text',
-            text: `LINE User ID ของคุณคือ: ${userId}\nนำไปกรอกในหน้าเว็บเพื่อเชื่อมบัญชี`
-          });
+          await replyToUser(event.replyToken, `LINE User ID ของคุณคือ: ${userId}\nนำไปกรอกในหน้าเว็บเพื่อเชื่อมบัญชี`);
           continue;
         }
       }
