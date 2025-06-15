@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const axios = require('axios');
 const admin = require('firebase-admin');
 const qs = require('querystring');
+const path = require('path');
 
 // Firebase Realtime Database URL
 const databaseURL = process.env.DATABASE_URL;
@@ -39,6 +40,50 @@ const db = admin.database();
 // Express setup
 const app = express();
 app.use(bodyParser.json());
+
+// ให้ Express เสิร์ฟไฟล์ static จาก GreenPointSystem
+app.use('/u67319010043/GreenPointSystem', express.static(
+  path.join(__dirname, '../u67319010043/GreenPointSystem')
+));
+
+// LINE Login Callback
+app.get('/line-callback', async (req, res) => {
+  const code = req.query.code;
+  if (!code) return res.send('ไม่พบ code จาก LINE');
+
+  try {
+    const client_id = '2007575934'; // Channel ID จาก LINE Login Channel
+    const client_secret = '8068bab139aa738d240813377dc97121'; // Channel Secret จาก LINE Login Channel
+    const redirect_uri = 'https://line-bot-navy.vercel.app/line-callback'; // ต้องตรงกับที่ตั้งไว้ใน LINE Developers Console
+
+    const tokenRes = await axios.post('https://api.line.me/oauth2/v2.1/token', qs.stringify({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri,
+      client_id,
+      client_secret
+    }), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    const access_token = tokenRes.data.access_token;
+
+    // ดึง profile จาก LINE Login
+    const profileRes = await axios.get('https://api.line.me/v2/profile', {
+      headers: { Authorization: `Bearer ${access_token}` }
+    });
+    const { userId } = profileRes.data;
+
+    // Redirect ไปหน้า user-ui.html ที่ deploy บน Vercel พร้อมส่ง lineUserId ไปด้วย
+    res.redirect(`https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`);
+  } catch (err) {
+    if (err.response && err.response.data) {
+      res.send('เกิดข้อผิดพลาด: ' + JSON.stringify(err.response.data));
+    } else {
+      res.send('เกิดข้อผิดพลาด: ' + err.message);
+    }
+  }
+});
 
 // Webhook สำหรับ LINE Messaging API
 app.post('/webhook', async (req, res) => {
@@ -99,46 +144,6 @@ app.post('/webhook', async (req, res) => {
     }
   }
   res.status(200).send('OK');
-});
-
-// Callback สำหรับ LINE Login
-app.get('/line-callback', async (req, res) => {
-  const code = req.query.code;
-  if (!code) return res.send('ไม่พบ code จาก LINE');
-
-  try {
-    const client_id = '2007575934'; // ใส่ Channel ID ของ LINE Login Channel
-    const client_secret = '8068bab139aa738d240813377dc97121'; // ใส่ Channel Secret ของ LINE Login Channel
-    const redirect_uri = 'https://line-bot-navy.vercel.app/line-callback'; // ต้องตรงกับที่ตั้งไว้ใน LINE Developers Console
-
-    // ใช้ qs.stringify เพื่อส่งข้อมูลแบบ x-www-form-urlencoded
-    const tokenRes = await axios.post('https://api.line.me/oauth2/v2.1/token', qs.stringify({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri,
-      client_id,
-      client_secret
-    }), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-    });
-
-    const access_token = tokenRes.data.access_token;
-
-    // ดึง profile จาก LINE Login
-    const profileRes = await axios.get('https://api.line.me/v2/profile', {
-      headers: { Authorization: `Bearer ${access_token}` }
-    });
-    const { userId } = profileRes.data;
-
-    // Redirect ไปหน้า user-ui.html พร้อมส่ง lineUserId ไปด้วย
-    res.redirect(`/u67319010043/GreenPointSystem/user-ui.html?lineUserId=${userId}`);
-  } catch (err) {
-    if (err.response && err.response.data) {
-      res.send('เกิดข้อผิดพลาด: ' + JSON.stringify(err.response.data));
-    } else {
-      res.send('เกิดข้อผิดพลาด: ' + err.message);
-    }
-  }
 });
 
 // ฟังก์ชันเพิ่มข้อมูลผู้ใช้ใน Firebase
