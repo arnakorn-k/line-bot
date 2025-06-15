@@ -39,7 +39,7 @@ const db = admin.database();
 const app = express();
 app.use(bodyParser.json());
 
-// Webhook endpoint
+// Webhook สำหรับ LINE Messaging API
 app.post('/webhook', async (req, res) => {
   const events = req.body.events;
   for (let event of events) {
@@ -98,6 +98,16 @@ app.post('/webhook', async (req, res) => {
     }
   }
   res.status(200).send('OK');
+});
+
+// Callback สำหรับ LINE Login
+app.get('/line-callback', async (req, res) => {
+  const code = req.query.code;
+  if (!code) {
+    return res.send('ไม่พบ code จาก LINE');
+  }
+  // ตัวอย่าง: แสดง code ที่ได้ (ในงานจริงควรแลก token และดึง profile)
+  res.send('ล็อกอินผ่าน LINE สำเร็จ! (code: ' + code + ')');
 });
 
 // ฟังก์ชันเพิ่มข้อมูลผู้ใช้ใน Firebase
