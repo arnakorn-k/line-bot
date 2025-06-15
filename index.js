@@ -107,9 +107,9 @@ app.get('/line-callback', async (req, res) => {
   if (!code) return res.send('ไม่พบ code จาก LINE');
 
   try {
-    const client_id = 'YOUR_CHANNEL_ID'; // ใส่ Channel ID ของ LINE Login Channel
-    const client_secret = 'YOUR_CHANNEL_SECRET'; // ใส่ Channel Secret ของ LINE Login Channel
-    const redirect_uri = 'YOUR_CALLBACK_URL'; // ต้องตรงกับที่ตั้งไว้ใน LINE Developers Console
+    const client_id = '2007575934'; // ใส่ Channel ID ของ LINE Login Channel
+    const client_secret = '8068bab139aa738d240813377dc97121'; // ใส่ Channel Secret ของ LINE Login Channel
+    const redirect_uri = 'https://line-bot-navy.vercel.app/line-callback'; // ต้องตรงกับที่ตั้งไว้ใน LINE Developers Console
 
     // ใช้ qs.stringify เพื่อส่งข้อมูลแบบ x-www-form-urlencoded
     const tokenRes = await axios.post('https://api.line.me/oauth2/v2.1/token', qs.stringify({
