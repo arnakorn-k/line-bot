@@ -87,7 +87,7 @@ app.post('/webhook', async (req, res) => {
 
         // เมื่อผู้ใช้พิมพ์ "myid" ใน LINE Bot
         if (event.message.text === 'myid') {
-          const webUrl = `https://line-bot-navy.vercel.app/user-ui.html?lineUserId=${userId}`;
+          const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
           await replyToUser(
             event.replyToken,
             `กดลิงก์นี้เพื่อเชื่อมบัญชี LINE กับเว็บ:\n${webUrl}`
