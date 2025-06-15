@@ -103,17 +103,14 @@ app.post('/webhook', async (req, res) => {
 // Callback สำหรับ LINE Login
 app.get('/line-callback', async (req, res) => {
   const code = req.query.code;
-  if (!code) {
-    return res.send('ไม่พบ code จาก LINE');
-  }
+  if (!code) return res.send('ไม่พบ code จาก LINE');
 
-  // แลก code เป็น access_token และดึง profile
   try {
-    const client_id = '2007575934'; // ใส่ Channel ID ของคุณ
-    const client_secret = '8068bab139aa738d240813377dc97121'; // ใส่ Channel Secret ของคุณ
-    const redirect_uri = 'https://line-bot-navy.vercel.app/line-callback'; // ต้องตรงกับที่ตั้งใน LINE Developers Console
+    // แลก code เป็น access_token
+    const client_id = 'YOUR_CHANNEL_ID';
+    const client_secret = 'YOUR_CHANNEL_SECRET';
+    const redirect_uri = 'YOUR_CALLBACK_URL';
 
-    // ใช้ axios แลก code เป็น access_token
     const tokenRes = await axios.post('https://api.line.me/oauth2/v2.1/token', null, {
       params: {
         grant_type: 'authorization_code',
@@ -126,13 +123,25 @@ app.get('/line-callback', async (req, res) => {
     });
     const access_token = tokenRes.data.access_token;
 
-    // ดึง profile
+    // ดึง profile จาก LINE Login
     const profileRes = await axios.get('https://api.line.me/v2/profile', {
       headers: { Authorization: `Bearer ${access_token}` }
     });
+    const { userId, displayName, pictureUrl } = profileRes.data;
 
-    // profileRes.data = { userId, displayName, pictureUrl }
-    res.send(`ยินดีต้อนรับ ${profileRes.data.displayName} (userId: ${profileRes.data.userId})`);
+    // ดึงข้อมูลผู้ใช้จาก Firebase
+    const snapshot = await admin.database().ref('users/' + userId).once('value');
+    const userData = snapshot.val();
+
+    // แสดงข้อมูลที่มีใน Firebase (เช่น แต้ม, โปรไฟล์ ฯลฯ)
+    res.send(`
+      <h2>ยินดีต้อนรับ ${displayName}</h2>
+      <img src="${pictureUrl}" alt="profile" style="width:100px;border-radius:50px;"><br>
+      <b>LINE User ID:</b> ${userId}<br>
+      <b>แต้ม:</b> ${userData && userData.points ? userData.points : 0}<br>
+      <b>ข้อมูลอื่น ๆ ใน Firebase:</b><br>
+      <pre>${JSON.stringify(userData, null, 2)}</pre>
+    `);
   } catch (err) {
     res.send('เกิดข้อผิดพลาด: ' + err.message);
   }
