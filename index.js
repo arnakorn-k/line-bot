@@ -107,9 +107,9 @@ app.get('/line-callback', async (req, res) => {
   if (!code) return res.send('ไม่พบ code จาก LINE');
 
   try {
-    const client_id = '2007575934'; // ใส่ Channel ID ของ LINE Login Channel
-    const client_secret = '8068bab139aa738d240813377dc97121'; // ใส่ Channel Secret ของ LINE Login Channel
-    const redirect_uri = 'https://line-bot-navy.vercel.app/line-callback'; // ต้องตรงกับที่ตั้งไว้ใน LINE Developers Console
+    const client_id = 'YOUR_CHANNEL_ID'; // ใส่ Channel ID ของ LINE Login Channel
+    const client_secret = 'YOUR_CHANNEL_SECRET'; // ใส่ Channel Secret ของ LINE Login Channel
+    const redirect_uri = 'YOUR_CALLBACK_URL'; // ต้องตรงกับที่ตั้งไว้ใน LINE Developers Console
 
     // ใช้ qs.stringify เพื่อส่งข้อมูลแบบ x-www-form-urlencoded
     const tokenRes = await axios.post('https://api.line.me/oauth2/v2.1/token', qs.stringify({
@@ -128,23 +128,11 @@ app.get('/line-callback', async (req, res) => {
     const profileRes = await axios.get('https://api.line.me/v2/profile', {
       headers: { Authorization: `Bearer ${access_token}` }
     });
-    const { userId, displayName, pictureUrl } = profileRes.data;
+    const { userId } = profileRes.data;
 
-    // ดึงข้อมูลผู้ใช้จาก Firebase
-    const snapshot = await admin.database().ref('users/' + userId).once('value');
-    const userData = snapshot.val();
-
-    // แสดงข้อมูลที่มีใน Firebase
-    res.send(`
-      <h2>ยินดีต้อนรับ ${displayName}</h2>
-      <img src="${pictureUrl}" alt="profile" style="width:100px;border-radius:50px;"><br>
-      <b>LINE User ID:</b> ${userId}<br>
-      <b>แต้ม:</b> ${userData && userData.points ? userData.points : 0}<br>
-      <b>ข้อมูลอื่น ๆ ใน Firebase:</b><br>
-      <pre>${JSON.stringify(userData, null, 2)}</pre>
-    `);
+    // Redirect ไปหน้า user-ui.html พร้อมส่ง lineUserId ไปด้วย
+    res.redirect(`/u67319010043/GreenPointSystem/user-ui.html?lineUserId=${userId}`);
   } catch (err) {
-    // แสดงรายละเอียด error จาก LINE
     if (err.response && err.response.data) {
       res.send('เกิดข้อผิดพลาด: ' + JSON.stringify(err.response.data));
     } else {
