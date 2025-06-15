@@ -101,13 +101,41 @@ app.post('/webhook', async (req, res) => {
 });
 
 // Callback สำหรับ LINE Login
-app.get('/line-callback', async (req, res) => {
+app.get('/callback', async (req, res) => {
   const code = req.query.code;
   if (!code) {
     return res.send('ไม่พบ code จาก LINE');
   }
-  // ตัวอย่าง: แสดง code ที่ได้ (ในงานจริงควรแลก token และดึง profile)
-  res.send('ล็อกอินผ่าน LINE สำเร็จ! (code: ' + code + ')');
+
+  // แลก code เป็น access_token และดึง profile
+  try {
+    const client_id = '2007575934'; // ใส่ Channel ID ของคุณ
+    const client_secret = '8068bab139aa738d240813377dc97121'; // ใส่ Channel Secret ของคุณ
+    const redirect_uri = 'https://line-bot-navy.vercel.app/callback'; // ต้องตรงกับที่ตั้งใน LINE Developers Console
+
+    // ใช้ axios แลก code เป็น access_token
+    const tokenRes = await axios.post('https://api.line.me/oauth2/v2.1/token', null, {
+      params: {
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri,
+        client_id,
+        client_secret
+      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    const access_token = tokenRes.data.access_token;
+
+    // ดึง profile
+    const profileRes = await axios.get('https://api.line.me/v2/profile', {
+      headers: { Authorization: `Bearer ${access_token}` }
+    });
+
+    // profileRes.data = { userId, displayName, pictureUrl }
+    res.send(`ยินดีต้อนรับ ${profileRes.data.displayName} (userId: ${profileRes.data.userId})`);
+  } catch (err) {
+    res.send('เกิดข้อผิดพลาด: ' + err.message);
+  }
 });
 
 // ฟังก์ชันเพิ่มข้อมูลผู้ใช้ใน Firebase
