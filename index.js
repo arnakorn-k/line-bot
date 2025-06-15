@@ -111,8 +111,12 @@ app.post('/webhook', async (req, res) => {
       if (event.message.type === 'text') {
         const userMessage = event.message.text.toLowerCase().trim();
 
-        if (userMessage === '!menu') {
-          await replyToUser(event.replyToken, "ขออภัยค่ะขณะนี้ Menu ไม่พร้อมใช้งาน");
+        if (userMessage === 'linkweb') {
+          const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+          await replyToUser(
+            event.replyToken,
+            `กดลิงก์นี้เพื่อเชื่อมบัญชี LINE กับเว็บ:\n${webUrl}`
+          );
           continue;
         }
 
@@ -128,16 +132,6 @@ app.post('/webhook', async (req, res) => {
 
         if (userMessage === 'myprofile') {
           await handleUserProfile(event.replyToken, userId);
-          continue;
-        }
-
-        // เมื่อผู้ใช้พิมพ์ "myid" ใน LINE Bot
-        if (event.message.text === 'myid') {
-          const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
-          await replyToUser(
-            event.replyToken,
-            `กดลิงก์นี้เพื่อเชื่อมบัญชี LINE กับเว็บ:\n${webUrl}`
-          );
           continue;
         }
       }
