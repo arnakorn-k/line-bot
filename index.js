@@ -114,35 +114,18 @@ app.post('/webhook', async (req, res) => {
         if (userMessage === 'linkweb') {
           const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
           const buttonMessage = {
-            type: "flex",
+            type: "template",
             altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
-            contents: {
-              type: "bubble",
-              body: {
-                type: "box",
-                layout: "vertical",
-                contents: [
-                  {
-                    type: "text",
-                    text: "เชื่อมบัญชี LINE กับเว็บไซต์",
-                    weight: "bold",
-                    size: "lg",
-                    color: "#1DB446",
-                    margin: "md"
-                  },
-                  {
-                    type: "button",
-                    style: "primary",
-                    color: "#1DB446", // เปลี่ยนสีปุ่มเป็นสีส้ม (หรือใส่รหัสสีที่ต้องการ)
-                    action: {
-                      type: "uri",
-                      label: "เชื่อมบัญชี",
-                      uri: webUrl
-                    },
-                    margin: "lg"
-                  }
-                ]
-              }
+            template: {
+              type: "buttons",
+              text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+              actions: [
+                {
+                  type: "uri",
+                  label: "เชื่อมบัญชี",
+                  uri: webUrl
+                }
+              ]
             }
           };
           await replyWithFlexMessage(event.replyToken, buttonMessage);
