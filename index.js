@@ -121,15 +121,9 @@ app.post('/webhook', async (req, res) => {
               text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
               actions: [
                 {
-                  type: "button",
-                  style: "primary",
-                  color: "#FF6F00", // เปลี่ยนสีปุ่มเป็นสีส้ม (หรือใส่รหัสสีที่ต้องการ)
-                  action: {
-                    type: "uri",
-                    label: "เชื่อมบัญชี",
-                    uri: webUrl
-                  },
-                  margin: "lg"
+                  type: "uri",
+                  label: "เชื่อมบัญชี",
+                  uri: webUrl
                 }
               ]
             }
