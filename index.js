@@ -133,7 +133,7 @@ app.post('/webhook', async (req, res) => {
                   {
                     type: "button",
                     style: "primary",
-                    color: "#FF6F00",
+                    color: "#1DB446", // เปลี่ยนสีปุ่มเป็นสีส้ม (หรือใส่รหัสสีที่ต้องการ)
                     action: {
                       type: "uri",
                       label: "เชื่อมบัญชี",
