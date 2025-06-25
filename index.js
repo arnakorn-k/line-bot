@@ -113,10 +113,22 @@ app.post('/webhook', async (req, res) => {
 
         if (userMessage === 'linkweb') {
           const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
-          await replyToUser(
-            event.replyToken,
-            `กดลิงก์นี้เพื่อเชื่อมบัญชี LINE กับเว็บ:\n${webUrl}`
-          );
+          const buttonMessage = {
+            type: "template",
+            altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+            template: {
+              type: "buttons",
+              text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+              actions: [
+                {
+                  type: "uri",
+                  label: "เชื่อมบัญชี",
+                  uri: webUrl
+                }
+              ]
+            }
+          };
+          await replyWithFlexMessage(event.replyToken, buttonMessage);
           continue;
         }
 
