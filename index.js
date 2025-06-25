@@ -123,6 +123,7 @@ app.post('/webhook', async (req, res) => {
                 {
                   type: "uri",
                   label: "เชื่อมบัญชี",
+                  color: "#FF6F00",
                   uri: webUrl
                 }
               ]
