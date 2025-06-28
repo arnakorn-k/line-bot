@@ -664,10 +664,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-
-// ตัวอย่างการเรียกใช้ฟังก์ชัน updateUserPoints
-// เพิ่มแต้ม 10 แต้ม พร้อมบันทึกประวัติ
-await updateUserPoints(userId, +10, "แลกขวดพลาสติก");
-
-// ลดแต้ม 5 แต้ม พร้อมบันทึกประวัติ
-await updateUserPoints(userId, -5, "แลกของรางวัล");
