@@ -88,68 +88,84 @@ app.get('/line-callback', async (req, res) => {
 // Webhook สำหรับ LINE Messaging API
 app.post('/webhook', async (req, res) => {
   const events = req.body.events;
-  for (let event of events) {
-    const userId = event.source.userId;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
 
-    // ดึงข้อมูลผู้ใช้จาก Firebase
-    const userRef = db.ref('users/' + userId);
-    const userSnapshot = await userRef.once('value');
-    const userData = userSnapshot.val();
-    const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
-
-    if (event.type === 'message') {
-      if (event.message.type === 'text') {
-        console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
-      } else if (event.message.type === 'sticker') {
-        console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+      // ฟังก์ชันเพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
       }
 
-      // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
-      await addUserData(userId);
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
 
-      // ตรวจสอบข้อความจากผู้ใช้
-      if (event.message.type === 'text') {
-        const userMessage = event.message.text.toLowerCase().trim();
-
-        if (userMessage === 'linkweb') {
-          const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
-          const buttonMessage = {
-            type: "template",
-            altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
-            template: {
-              type: "buttons",
-              text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
-              actions: [
-                {
-                  type: "uri",
-                  label: "เชื่อมบัญชี",
-                  uri: webUrl
-                }
-              ]
-            }
-          };
-          await replyWithFlexMessage(event.replyToken, buttonMessage);
-          continue;
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
         }
 
-        if (userMessage === 'mypoints') {
-          await handleMyPoints(event.replyToken, userId);
-          continue;
-        }
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
 
-        if (userMessage === 'mypoints > ดูรายละเอียด') {
-          await handleUserDetails(event.replyToken, userId);
-          continue;
-        }
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
 
-        if (userMessage === 'myprofile') {
-          await handleUserProfile(event.replyToken, userId);
-          continue;
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            await handleUserDetails(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
         }
       }
     }
   }
-  res.status(200).send('OK');
+  res.sendStatus(200);
 });
 
 // ฟังก์ชันเพิ่มข้อมูลผู้ใช้ใน Firebase
