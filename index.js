@@ -659,19 +659,7 @@ async function updateUserPoints(userId, change, note) {
   });
 }
 
-// Admin route: Update user points
-app.post('/admin/update-points', async (req, res) => {
-  const { userId, points, note } = req.body;
-  if (!userId || typeof points !== 'number' || !note) {
-    return res.json({ success: false, message: 'ข้อมูลไม่ครบถ้วน' });
-  }
-  try {
-    await updateUserPoints(userId, points, note);
-    res.json({ success: true });
-  } catch (err) {
-    res.json({ success: false, message: err.message });
-  }
-});
+
 
 // Start server
 const PORT = process.env.PORT || 3000;
