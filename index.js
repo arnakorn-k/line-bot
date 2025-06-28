@@ -622,6 +622,27 @@ async function replyWithFlexMessage(replyToken, flexMessage) {
   }
 }
 
+// ฟังก์ชันอัปเดตแต้มผู้ใช้
+async function updateUserPoints(userId, change, note) {
+  const userRef = db.ref('users/' + userId);
+  const userSnap = await userRef.once('value');
+  const userData = userSnap.val();
+
+  let newPoints = (userData?.points || 0) + change;
+  if (newPoints < 0) newPoints = 0;
+
+  // อัปเดตแต้ม
+  await userRef.update({ points: newPoints });
+
+  // เพิ่มประวัติ
+  const historyRef = userRef.child('points_history').push();
+  await historyRef.set({
+    timestamp: Date.now(),
+    change,
+    note
+  });
+}
+
 // Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
