@@ -94,7 +94,7 @@ app.post('/webhook', async (req, res) => {
       const replyToken = event.replyToken;
       const msg = event.message.text.trim();
 
-      // ฟังก์ชันเพิ่มแต้มด้วย !@ จำนวน
+      // เพิ่มแต้มด้วย !@ จำนวน
       if (/^!@\s*-?\d+$/.test(msg)) {
         const amount = parseInt(msg.replace('!@', '').trim(), 10);
         if (!isNaN(amount)) {
