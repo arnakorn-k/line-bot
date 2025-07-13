@@ -672,9 +672,1328 @@ app.post('/admin/update-points', async (req, res) => {
   }
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
 });
 
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ฟังก์ชันดึงประวัติแต้ม
+async function getUserPointsHistory(userId) {
+  const userRef = db.ref('users/' + userId + '/points_history');
+  const snap = await userRef.orderByChild('timestamp').limitToLast(10).once('value');
+  const history = [];
+  snap.forEach(child => {
+    history.push(child.val());
+  });
+  // เรียงจากใหม่ไปเก่า
+  return history.reverse();
+}
+
+// ตัวอย่างการใช้งานใน webhook (เมื่อผู้ใช้พิมพ์ "mypoints > ดูรายละเอียด")
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
+
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
+        continue;
+      }
+
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
+
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
+        }
+
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
+
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
+            continue;
+          }
+
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            const userId = event.source.userId;
+            const history = await getUserPointsHistory(userId);
+            let msg = 'ประวัติแต้มล่าสุด:\n';
+            history.forEach(h => {
+              const date = new Date(h.timestamp).toLocaleString('th-TH');
+              msg += `${date} : ${h.change > 0 ? '+' : ''}${h.change} (${h.note})\n`;
+            });
+            await replyToUser(event.replyToken, { type: 'text', text: msg });
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  res.sendStatus(200);
+});
