@@ -660,15 +660,15 @@ async function updateUserPoints(userId, change, note) {
 }
 
 app.post('/admin/update-points', async (req, res) => {
-  const { userId, points, note } = req.body;
-  if (!userId || typeof points !== 'number' || !note) {
-    return res.json({ success: false, message: 'ข้อมูลไม่ครบถ้วน' });
-  }
   try {
+    const { userId, points, note } = req.body;
+    if (!userId || typeof points !== 'number' || !note) {
+      return res.json({ success: false, message: 'ข้อมูลไม่ครบถ้วน' });
+    }
     await updateUserPoints(userId, points, note);
-    res.json({ success: true });
+    res.json({ success: true }); // ส่ง JSON กลับ
   } catch (err) {
-    res.json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message }); // ส่ง JSON กลับแม้เกิด error
   }
 });
 
