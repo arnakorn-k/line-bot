@@ -144,7 +144,7 @@ app.post('/webhook', async (req, res) => {
         // บันทึก state ว่ารอคูปอง
         await db.ref('users/' + userId + '/state').set('waiting_coupon');
         await replyToUser(event.replyToken, 'กรุณาพิมพ์รหัสคูปอง');
-        return;
+        continue;
       }
 
       // 2. ตรวจสอบ state ของ user
@@ -161,20 +161,19 @@ app.post('/webhook', async (req, res) => {
         if (!coupon) {
           await replyToUser(event.replyToken, `ไม่พบคูปอง "${code}"`);
           await db.ref('users/' + userId + '/state').remove();
-          return;
+          continue;
         }
 
-        // (ใส่ logic ตรวจสอบ limit/users/used ตามที่คุณต้องการ)
         // ตัวอย่าง: ไม่จำกัดจำนวนครั้ง
         await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
         await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
         // ลบ state หลังใช้งาน
         await db.ref('users/' + userId + '/state').remove();
-        return;
+        continue;
       }
 
       // 3. ถ้าไม่ใช่ /coupons และไม่ได้อยู่ใน state รอคูปอง → ข้าม ไม่ตอบกลับ
-      return;
+      continue;
     }
 
     if (event.type === 'message' && event.message.type === 'text') {
