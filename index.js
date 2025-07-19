@@ -158,7 +158,7 @@ app.post('/webhook', async (req, res) => {
           if (userMessage === '/coupons') {
             await db.ref('users/' + userId + '/state').set('waiting_coupon');
             await replyToUser(event.replyToken, 'กรุณาพิมพ์รหัสคูปอง');
-            return;
+            continue;
           }
 
           const stateSnap = await db.ref('users/' + userId + '/state').once('value');
@@ -173,7 +173,7 @@ app.post('/webhook', async (req, res) => {
             if (!coupon) {
               await replyToUser(event.replyToken, `ไม่พบคูปอง "${code}"`);
               await db.ref('users/' + userId + '/state').remove();
-              return;
+              continue;
             }
 
             // ถ้ามี limit แปลว่าเป็นคูปองแบบจำกัดจำนวนครั้ง
