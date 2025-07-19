@@ -37,7 +37,6 @@ admin.initializeApp({
 
 const db = admin.database();
 
-// Express setup
 const app = express();
 app.use(bodyParser.json());
 
@@ -166,7 +165,31 @@ app.post('/webhook', async (req, res) => {
       continue;
     }
 
-    // ...โค้ดฟังก์ชันอื่นๆ (mypoints, myprofile, ฯลฯ)...
+    // mypoints
+    if (event.type === 'message' && event.message.type === 'text') {
+      const msg = event.message.text.trim();
+      const userId = event.source.userId;
+
+      // mypoints
+      if (msg === 'mypoints') {
+        await handleMyPoints(event.replyToken, userId);
+        continue;
+      }
+
+      // myprofile
+      if (msg === 'myprofile') {
+        await handleUserProfile(event.replyToken, userId);
+        continue;
+      }
+
+      // linkweb
+      if (msg === 'linkweb') {
+        await replyToUser(event.replyToken, 'https://green-point-system.vercel.app/user-ui.html?lineUserId=' + userId);
+        continue;
+      }
+
+      // ...เพิ่มฟังก์ชันอื่นๆ ได้ที่นี่...
+    }
   }
   res.sendStatus(200);
 });
@@ -299,132 +322,6 @@ async function handleMyPoints(replyToken, userId) {
     await replyWithFlexMessage(replyToken, flexMessage);
   } else {
     await replyToUser(replyToken, "ไม่พบข้อมูลแต้มของคุณ.");
-  }
-}
-
-// ฟังก์ชันแสดงรายละเอียดทั้งหมดของผู้ใช้
-async function handleUserDetails(replyToken, userId) {
-  const userRef = db.ref('users/' + userId);
-  const userSnapshot = await userRef.once('value');
-  const userData = userSnapshot.val();
-
-  if (userData) {
-    const points = userData.points || 0;
-    const userName = userData.name || "ไม่ทราบชื่อ";
-
-    // Flex Message template สำหรับแสดงข้อมูลทั้งหมด
-    const flexMessage = {
-      type: "flex",
-      altText: "ข้อมูลรายละเอียดของคุณ",
-      contents: {
-        type: "bubble",
-        body: {
-          type: "box",
-          layout: "vertical",
-          contents: [
-            {
-              type: "text",
-              text: "ข้อมูลของคุณ",
-              weight: "bold",
-              size: "xl",
-              color: "#1DB446"
-            },
-            {
-              type: "text",
-              text: `${getCurrentDateTime()}`,  // ใช้เวลาปัจจุบันจากฟังก์ชันที่แก้ไขแล้ว
-              size: "sm",
-              color: "#888888",
-              margin: "md"
-            },
-            {
-              type: "separator",
-              margin: "lg"
-            },
-            {
-              type: "box",
-              layout: "vertical",
-              margin: "lg",
-              spacing: "sm",
-              contents: [
-                {
-                  type: "text",
-                  text: "ชื่อผู้ใช้",
-                  color: "#aaaaaa",
-                  size: "sm"
-                },
-                {
-                  type: "text",
-                  text: userName,
-                  weight: "bold",
-                  size: "md",
-                  color: "#333333"
-                },
-                {
-                  type: "text",
-                  text: "User ID",
-                  color: "#aaaaaa",
-                  size: "sm"
-                },
-                {
-                  type: "text",
-                  text: userData.userId,  // แสดง User ID แบบเต็ม
-                  weight: "bold",
-                  size: "md",
-                  color: "#333333"
-                },
-                {
-                  type: "text",
-                  text: "แต้มคงเหลือ",
-                  color: "#aaaaaa",
-                  size: "sm",
-                  margin: "md"
-                },
-                {
-                  type: "text",
-                  text: `${points} แต้ม`,
-                  weight: "bold",
-                  size: "xl",
-                  color: "#1DB446"
-                },
-                {
-                  type: "text",
-                  text: "วันที่สร้างบัญชี",
-                  color: "#aaaaaa",
-                  size: "sm",
-                  margin: "md"
-                },
-                {
-                  type: "text",
-                  text: userData.createdAt,
-                  weight: "bold",
-                  size: "md",
-                  color: "#333333"
-                }
-              ]
-            },
-            {
-              type: "separator",
-              margin: "lg"
-            },
-            {
-              type: "button",
-              style: "primary",
-              color: "#1DB446",
-              action: {
-                type: "message",
-                label: "กลับไปที่หน้าแรก",
-                text: "mypoints"  // กลับไปที่ข้อความหลักเมื่อกดปุ่ม
-              },
-              margin: "lg"
-            }
-          ]
-        }
-      }
-    };
-
-    await replyWithFlexMessage(replyToken, flexMessage);
-  } else {
-    await replyToUser(replyToken, "ไม่พบข้อมูลของคุณ.");
   }
 }
 
