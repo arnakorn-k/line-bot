@@ -90,6 +90,40 @@ app.post('/webhook', async (req, res) => {
   const events = req.body.events;
   for (const event of events) {
     if (event.type === 'message' && event.message.type === 'text') {
+      const code = event.message.text.trim();
+      const userId = event.source.userId;
+
+      // อ่านข้อมูลคูปอง
+      const couponRef = db.ref('coupons/' + code);
+      const couponSnap = await couponRef.once('value');
+      const coupon = couponSnap.val();
+
+      if (!coupon) {
+        await replyToUser(event.replyToken, `ไม่พบคูปอง "${code}"`);
+        return;
+      }
+
+      // ตรวจสอบว่าผู้ใช้เคยใช้คูปองนี้หรือยัง
+      if (coupon.users && coupon.users[userId]) {
+        await replyToUser(event.replyToken, `คุณได้ใช้คูปอง "${code}" ไปแล้ว`);
+        return;
+      }
+
+      // ตรวจสอบจำนวนครั้งที่ใช้
+      if ((coupon.used || 0) >= coupon.limit) {
+        await replyToUser(event.replyToken, `คูปอง "${code}" ถูกใช้ครบจำนวนครั้งแล้ว`);
+        return;
+      }
+
+      // ใช้คูปองได้
+      await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
+      await couponRef.child('used').set((coupon.used || 0) + 1);
+      await couponRef.child('users/' + userId).set(true);
+      await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
+      return;
+    }
+
+    if (event.type === 'message' && event.message.type === 'text') {
       const msg = event.message.text.trim();
       const userId = event.source.userId;
 
