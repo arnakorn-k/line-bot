@@ -659,13 +659,7 @@ async function updateUserPoints(userId, change, note) {
   });
 }
 
-app.post('/admin/update-points', async (req, res) => {
-  const { userId, points, note } = req.body;
-  if (!userId || typeof points !== 'number' || !note) {
-    return res.json({ success: false, message: 'ข้อมูลไม่ครบถ้วน' });
-  }
-  // ...อัปเดตแต้ม...
-});
+
 
 // Start server
 const PORT = process.env.PORT || 3000;
