@@ -103,22 +103,34 @@ app.post('/webhook', async (req, res) => {
         return;
       }
 
-      // ตรวจสอบว่าผู้ใช้เคยใช้คูปองนี้หรือยัง
-      if (coupon.users && coupon.users[userId]) {
-        await replyToUser(event.replyToken, `คุณได้ใช้คูปอง "${code}" ไปแล้ว`);
+      // ถ้ามี limit แปลว่าเป็นคูปองแบบจำกัดจำนวนครั้ง
+      if (coupon.limit !== undefined && coupon.limit !== null) {
+        // ดึงชื่อผู้ใช้ (ถ้ามี)
+        const nameSnap = await db.ref('users/' + userId + '/name').once('value');
+        const displayName = nameSnap.val() || userId;
+
+        // ตรวจสอบว่าผู้ใช้เคยใช้คูปองนี้หรือยัง
+        if (coupon.users && coupon.users[displayName]) {
+          await replyToUser(event.replyToken, `คุณ (${displayName}) ได้ใช้คูปอง "${code}" ไปแล้ว`);
+          return;
+        }
+
+        // ตรวจสอบจำนวนครั้งที่ใช้
+        if ((coupon.used || 0) >= coupon.limit) {
+          await replyToUser(event.replyToken, `คูปอง "${code}" ถูกใช้ครบจำนวนครั้งแล้ว`);
+          return;
+        }
+
+        // ใช้คูปองได้
+        await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
+        await couponRef.child('used').set((coupon.used || 0) + 1);
+        await couponRef.child('users/' + displayName).set(true);
+        await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
         return;
       }
 
-      // ตรวจสอบจำนวนครั้งที่ใช้
-      if ((coupon.used || 0) >= coupon.limit) {
-        await replyToUser(event.replyToken, `คูปอง "${code}" ถูกใช้ครบจำนวนครั้งแล้ว`);
-        return;
-      }
-
-      // ใช้คูปองได้
+      // ถ้าไม่มี limit แปลว่าเป็นคูปองแบบไม่จำกัดจำนวนครั้ง
       await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
-      await couponRef.child('used').set((coupon.used || 0) + 1);
-      await couponRef.child('users/' + userId).set(true);
       await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
       return;
     }
@@ -127,18 +139,26 @@ app.post('/webhook', async (req, res) => {
       const msg = event.message.text.trim();
       const userId = event.source.userId;
 
+      // ตรวจสอบรูปแบบคำสั่ง !c หรือ !coupon
+      let match = msg.match(/^!c\s+(\S+)$/i) || msg.match(/^!coupon\s+(\S+)$/i);
+      if (!match) {
+        // ไม่ใช่คำสั่งคูปอง ข้ามไป
+        return;
+      }
+      const code = match[1];
+
       // ตรวจสอบคูปอง
-      const couponSnap = await db.ref('coupons/' + msg).once('value');
+      const couponSnap = await db.ref('coupons/' + code).once('value');
       const coupon = couponSnap.val();
       if (coupon && !coupon.used) {
         // เพิ่มแต้มให้ user
-        await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${msg}`);
+        await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
         // อัปเดตสถานะคูปอง
-        await db.ref('coupons/' + msg + '/used').set(true);
-        await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${msg}" สำเร็จ!`);
+        await db.ref('coupons/' + code + '/used').set(true);
+        await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
         return;
       } else if (coupon && coupon.used) {
-        await replyToUser(event.replyToken, `คูปอง "${msg}" ถูกใช้ไปแล้ว`);
+        await replyToUser(event.replyToken, `คูปอง "${code}" ถูกใช้ไปแล้ว`);
         return;
       }
 
