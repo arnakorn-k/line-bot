@@ -139,6 +139,48 @@ app.post('/webhook', async (req, res) => {
       const msg = event.message.text.trim();
       const userId = event.source.userId;
 
+      // 1. ถ้าผู้ใช้พิมพ์ /coupons
+      if (msg === '/coupons') {
+        // บันทึก state ว่ารอคูปอง
+        await db.ref('users/' + userId + '/state').set('waiting_coupon');
+        await replyToUser(event.replyToken, 'กรุณาพิมพ์รหัสคูปอง');
+        return;
+      }
+
+      // 2. ตรวจสอบ state ของ user
+      const stateSnap = await db.ref('users/' + userId + '/state').once('value');
+      const state = stateSnap.val();
+
+      if (state === 'waiting_coupon') {
+        // ตรวจสอบคูปอง
+        const code = msg; // ผู้ใช้พิมพ์รหัสคูปองตรง ๆ
+        const couponRef = db.ref('coupons/' + code);
+        const couponSnap = await couponRef.once('value');
+        const coupon = couponSnap.val();
+
+        if (!coupon) {
+          await replyToUser(event.replyToken, `ไม่พบคูปอง "${code}"`);
+          await db.ref('users/' + userId + '/state').remove();
+          return;
+        }
+
+        // (ใส่ logic ตรวจสอบ limit/users/used ตามที่คุณต้องการ)
+        // ตัวอย่าง: ไม่จำกัดจำนวนครั้ง
+        await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
+        await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
+        // ลบ state หลังใช้งาน
+        await db.ref('users/' + userId + '/state').remove();
+        return;
+      }
+
+      // 3. ถ้าไม่ใช่ /coupons และไม่ได้อยู่ใน state รอคูปอง → ข้าม ไม่ตอบกลับ
+      return;
+    }
+
+    if (event.type === 'message' && event.message.type === 'text') {
+      const msg = event.message.text.trim();
+      const userId = event.source.userId;
+
       // ตรวจสอบรูปแบบคำสั่ง !c หรือ !coupon
       let match = msg.match(/^!c\s+(\S+)$/i) || msg.match(/^!coupon\s+(\S+)$/i);
       if (!match) {
