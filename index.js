@@ -126,7 +126,8 @@ app.post('/webhook', async (req, res) => {
         if (event.message.type === 'text') {
           const userMessage = event.message.text.toLowerCase().trim();
 
-          if (userMessage === 'linkweb') {
+          // เปลี่ยนเป็น /linkweb
+          if (userMessage === '/linkweb') {
             const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
             const buttonMessage = {
               type: "template",
@@ -147,19 +148,67 @@ app.post('/webhook', async (req, res) => {
             continue;
           }
 
-          if (userMessage === 'mypoints') {
-            await handleMyPoints(event.replyToken, userId);
-            continue;
-          }
-
-          if (userMessage === 'mypoints > ดูรายละเอียด') {
-            await handleUserDetails(event.replyToken, userId);
-            continue;
-          }
-
-          if (userMessage === 'myprofile') {
+          // เปลี่ยนเป็น /myprofile
+          if (userMessage === '/myprofile') {
             await handleUserProfile(event.replyToken, userId);
             continue;
+          }
+
+          // ระบบคูปอง
+          if (userMessage === '/coupons') {
+            await db.ref('users/' + userId + '/state').set('waiting_coupon');
+            await replyToUser(event.replyToken, 'กรุณาพิมพ์รหัสคูปอง');
+            return;
+          }
+
+          const stateSnap = await db.ref('users/' + userId + '/state').once('value');
+          const state = stateSnap.val();
+
+          if (state === 'waiting_coupon') {
+            const code = userMessage;
+            const couponRef = db.ref('coupons/' + code);
+            const couponSnap = await couponRef.once('value');
+            const coupon = couponSnap.val();
+
+            if (!coupon) {
+              await replyToUser(event.replyToken, `ไม่พบคูปอง "${code}"`);
+              await db.ref('users/' + userId + '/state').remove();
+              return;
+            }
+
+            // ถ้ามี limit แปลว่าเป็นคูปองแบบจำกัดจำนวนครั้ง
+            if (coupon.limit !== undefined && coupon.limit !== null) {
+              const nameSnap = await db.ref('users/' + userId + '/name').once('value');
+              const displayName = nameSnap.val() || userId;
+
+              // ตรวจสอบว่าผู้ใช้เคยใช้คูปองนี้หรือยัง
+              if (coupon.users && coupon.users[displayName]) {
+                await replyToUser(event.replyToken, `คุณ (${displayName}) ได้ใช้คูปอง "${code}" ไปแล้ว`);
+                await db.ref('users/' + userId + '/state').remove();
+                return;
+              }
+
+              // ตรวจสอบจำนวนครั้งที่ใช้
+              if ((coupon.used || 0) >= coupon.limit) {
+                await replyToUser(event.replyToken, `คูปอง "${code}" ถูกใช้ครบจำนวนครั้งแล้ว`);
+                await db.ref('users/' + userId + '/state').remove();
+                return;
+              }
+
+              // ใช้คูปองได้
+              await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
+              await couponRef.child('used').set((coupon.used || 0) + 1);
+              await couponRef.child('users/' + displayName).set(true);
+              await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
+              await db.ref('users/' + userId + '/state').remove();
+              return;
+            }
+
+            // ถ้าไม่มี limit แปลว่าเป็นคูปองแบบไม่จำกัดจำนวนครั้ง
+            await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
+            await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
+            await db.ref('users/' + userId + '/state').remove();
+            return;
           }
         }
       }
