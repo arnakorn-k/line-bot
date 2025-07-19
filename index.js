@@ -89,6 +89,14 @@ app.get('/line-callback', async (req, res) => {
 app.post('/webhook', async (req, res) => {
   const events = req.body.events;
   for (const event of events) {
+    // ตอบกลับเมื่อมีคนแอดบอทเป็นเพื่อน
+    if (event.type === 'follow') {
+      const userId = event.source.userId;
+      await addUserData(userId); // สร้างข้อมูลผู้ใช้ใน Firebase ถ้ายังไม่มี
+      await replyToUser(event.replyToken, 'ขอบคุณที่เพิ่มบอทเป็นเพื่อน! กดปุ่มเมนูเพื่อเริ่มใช้งาน');
+      continue;
+    }
+
     if (event.type === 'message' && event.message.type === 'text') {
       const msg = event.message.text.trim();
       const userId = event.source.userId;
