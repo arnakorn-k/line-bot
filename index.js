@@ -37,6 +37,7 @@ admin.initializeApp({
 
 const db = admin.database();
 
+// Express setup
 const app = express();
 app.use(bodyParser.json());
 
@@ -88,107 +89,80 @@ app.get('/line-callback', async (req, res) => {
 app.post('/webhook', async (req, res) => {
   const events = req.body.events;
   for (const event of events) {
-    // ตอบกลับเมื่อมีคนแอดบอทเป็นเพื่อน
-    if (event.type === 'follow') {
-      const userId = event.source.userId;
-      await addUserData(userId); // สร้างข้อมูลผู้ใช้ใน Firebase ถ้ายังไม่มี
-      await replyToUser(event.replyToken, 'ขอบคุณที่เพิ่มบอทเป็นเพื่อน! กดปุ่มเมนูเพื่อเริ่มใช้งาน');
-      continue;
-    }
-
     if (event.type === 'message' && event.message.type === 'text') {
-      const msg = event.message.text.trim();
       const userId = event.source.userId;
+      const replyToken = event.replyToken;
+      const msg = event.message.text.trim();
 
-      // 1. ถ้าผู้ใช้พิมพ์ /coupons
-      if (msg === '/coupons') {
-        // บันทึก state ว่ารอคูปอง
-        await db.ref('users/' + userId + '/state').set('waiting_coupon');
-        await replyToUser(event.replyToken, 'กรุณาพิมพ์รหัสคูปอง');
+      // เพิ่มแต้มด้วย !@ จำนวน
+      if (/^!@\s*-?\d+$/.test(msg)) {
+        const amount = parseInt(msg.replace('!@', '').trim(), 10);
+        if (!isNaN(amount)) {
+          await updateUserPoints(userId, amount, `เพิ่มแต้มโดยคำสั่ง !@ ${amount}`);
+          await replyToUser(replyToken, `เพิ่มแต้ม ${amount > 0 ? '+' : ''}${amount} สำเร็จ`);
+        } else {
+          await replyToUser(replyToken, 'รูปแบบคำสั่งไม่ถูกต้อง');
+        }
         continue;
       }
 
-      // 2. ตรวจสอบ state ของ user
-      const stateSnap = await db.ref('users/' + userId + '/state').once('value');
-      const state = stateSnap.val();
+      // ดึงข้อมูลผู้ใช้จาก Firebase
+      const userRef = db.ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
+      const userName = userData ? userData.name : 'ไม่ทราบชื่อ';
 
-      if (state === 'waiting_coupon') {
-        // ตรวจสอบคูปอง
-        const code = msg; // ผู้ใช้พิมพ์รหัสคูปองตรง ๆ
-        const couponRef = db.ref('coupons/' + code);
-        const couponSnap = await couponRef.once('value');
-        const coupon = couponSnap.val();
-
-        if (!coupon) {
-          await replyToUser(event.replyToken, `ไม่พบคูปอง "${code}"`);
-          await db.ref('users/' + userId + '/state').remove();
-          continue;
+      if (event.type === 'message') {
+        if (event.message.type === 'text') {
+          console.log(`User ${userName} (ID: ${userId}) sent a text message:`, event.message.text);
+        } else if (event.message.type === 'sticker') {
+          console.log(`User ${userName} (ID: ${userId}) sent a sticker:`, event.message.stickerId);
         }
 
-        // ถ้ามี limit แปลว่าเป็นคูปองแบบจำกัดจำนวนครั้ง
-        if (coupon.limit !== undefined && coupon.limit !== null) {
-          // ดึงชื่อผู้ใช้ (ถ้ามี)
-          const nameSnap = await db.ref('users/' + userId + '/name').once('value');
-          const displayName = nameSnap.val() || userId;
+        // เพิ่มข้อมูลผู้ใช้ทุกครั้งที่พิมพ์หรือส่งสติกเกอร์
+        await addUserData(userId);
 
-          // ตรวจสอบว่าผู้ใช้เคยใช้คูปองนี้หรือยัง
-          if (coupon.users && coupon.users[displayName]) {
-            await replyToUser(event.replyToken, `คุณ (${displayName}) ได้ใช้คูปอง "${code}" ไปแล้ว`);
-            await db.ref('users/' + userId + '/state').remove();
+        // ตรวจสอบข้อความจากผู้ใช้
+        if (event.message.type === 'text') {
+          const userMessage = event.message.text.toLowerCase().trim();
+
+          if (userMessage === 'linkweb') {
+            const webUrl = `https://green-point-system.vercel.app/user-ui.html?lineUserId=${userId}`;
+            const buttonMessage = {
+              type: "template",
+              altText: "กดปุ่มนี้เพื่อเชื่อมบัญชี LINE กับเว็บ",
+              template: {
+                type: "buttons",
+                text: "กดปุ่มด้านล่างเพื่อเชื่อมบัญชี LINE กับเว็บ",
+                actions: [
+                  {
+                    type: "uri",
+                    label: "เชื่อมบัญชี",
+                    uri: webUrl
+                  }
+                ]
+              }
+            };
+            await replyWithFlexMessage(event.replyToken, buttonMessage);
             continue;
           }
 
-          // ตรวจสอบจำนวนครั้งที่ใช้
-          if ((coupon.used || 0) >= coupon.limit) {
-            await replyToUser(event.replyToken, `คูปอง "${code}" ถูกใช้ครบจำนวนครั้งแล้ว`);
-            await db.ref('users/' + userId + '/state').remove();
+          if (userMessage === 'mypoints') {
+            await handleMyPoints(event.replyToken, userId);
             continue;
           }
 
-          // ใช้คูปองได้
-          await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
-          await couponRef.child('used').set((coupon.used || 0) + 1);
-          await couponRef.child('users/' + displayName).set(true);
-          await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
-          await db.ref('users/' + userId + '/state').remove();
-          continue;
+          if (userMessage === 'mypoints > ดูรายละเอียด') {
+            await handleUserDetails(event.replyToken, userId);
+            continue;
+          }
+
+          if (userMessage === 'myprofile') {
+            await handleUserProfile(event.replyToken, userId);
+            continue;
+          }
         }
-
-        // ถ้าไม่มี limit แปลว่าเป็นคูปองแบบไม่จำกัดจำนวนครั้ง
-        await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${code}`);
-        await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${code}" สำเร็จ!`);
-        await db.ref('users/' + userId + '/state').remove();
-        continue;
       }
-
-      // 3. ถ้าไม่ใช่ /coupons และไม่ได้อยู่ใน state รอคูปอง → ข้าม ไม่ตอบกลับ
-      continue;
-    }
-
-    // mypoints
-    if (event.type === 'message' && event.message.type === 'text') {
-      const msg = event.message.text.trim();
-      const userId = event.source.userId;
-
-      // mypoints
-      if (msg === 'mypoints') {
-        await handleMyPoints(event.replyToken, userId);
-        continue;
-      }
-
-      // myprofile
-      if (msg === 'myprofile') {
-        await handleUserProfile(event.replyToken, userId);
-        continue;
-      }
-
-      // linkweb
-      if (msg === 'linkweb') {
-        await replyToUser(event.replyToken, 'https://green-point-system.vercel.app/user-ui.html?lineUserId=' + userId);
-        continue;
-      }
-
-      // ...เพิ่มฟังก์ชันอื่นๆ ได้ที่นี่...
     }
   }
   res.sendStatus(200);
@@ -322,6 +296,132 @@ async function handleMyPoints(replyToken, userId) {
     await replyWithFlexMessage(replyToken, flexMessage);
   } else {
     await replyToUser(replyToken, "ไม่พบข้อมูลแต้มของคุณ.");
+  }
+}
+
+// ฟังก์ชันแสดงรายละเอียดทั้งหมดของผู้ใช้
+async function handleUserDetails(replyToken, userId) {
+  const userRef = db.ref('users/' + userId);
+  const userSnapshot = await userRef.once('value');
+  const userData = userSnapshot.val();
+
+  if (userData) {
+    const points = userData.points || 0;
+    const userName = userData.name || "ไม่ทราบชื่อ";
+
+    // Flex Message template สำหรับแสดงข้อมูลทั้งหมด
+    const flexMessage = {
+      type: "flex",
+      altText: "ข้อมูลรายละเอียดของคุณ",
+      contents: {
+        type: "bubble",
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            {
+              type: "text",
+              text: "ข้อมูลของคุณ",
+              weight: "bold",
+              size: "xl",
+              color: "#1DB446"
+            },
+            {
+              type: "text",
+              text: `${getCurrentDateTime()}`,  // ใช้เวลาปัจจุบันจากฟังก์ชันที่แก้ไขแล้ว
+              size: "sm",
+              color: "#888888",
+              margin: "md"
+            },
+            {
+              type: "separator",
+              margin: "lg"
+            },
+            {
+              type: "box",
+              layout: "vertical",
+              margin: "lg",
+              spacing: "sm",
+              contents: [
+                {
+                  type: "text",
+                  text: "ชื่อผู้ใช้",
+                  color: "#aaaaaa",
+                  size: "sm"
+                },
+                {
+                  type: "text",
+                  text: userName,
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                },
+                {
+                  type: "text",
+                  text: "User ID",
+                  color: "#aaaaaa",
+                  size: "sm"
+                },
+                {
+                  type: "text",
+                  text: userData.userId,  // แสดง User ID แบบเต็ม
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                },
+                {
+                  type: "text",
+                  text: "แต้มคงเหลือ",
+                  color: "#aaaaaa",
+                  size: "sm",
+                  margin: "md"
+                },
+                {
+                  type: "text",
+                  text: `${points} แต้ม`,
+                  weight: "bold",
+                  size: "xl",
+                  color: "#1DB446"
+                },
+                {
+                  type: "text",
+                  text: "วันที่สร้างบัญชี",
+                  color: "#aaaaaa",
+                  size: "sm",
+                  margin: "md"
+                },
+                {
+                  type: "text",
+                  text: userData.createdAt,
+                  weight: "bold",
+                  size: "md",
+                  color: "#333333"
+                }
+              ]
+            },
+            {
+              type: "separator",
+              margin: "lg"
+            },
+            {
+              type: "button",
+              style: "primary",
+              color: "#1DB446",
+              action: {
+                type: "message",
+                label: "กลับไปที่หน้าแรก",
+                text: "mypoints"  // กลับไปที่ข้อความหลักเมื่อกดปุ่ม
+              },
+              margin: "lg"
+            }
+          ]
+        }
+      }
+    };
+
+    await replyWithFlexMessage(replyToken, flexMessage);
+  } else {
+    await replyToUser(replyToken, "ไม่พบข้อมูลของคุณ.");
   }
 }
 
