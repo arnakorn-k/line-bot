@@ -90,9 +90,23 @@ app.post('/webhook', async (req, res) => {
   const events = req.body.events;
   for (const event of events) {
     if (event.type === 'message' && event.message.type === 'text') {
-      const userId = event.source.userId;
-      const replyToken = event.replyToken;
       const msg = event.message.text.trim();
+      const userId = event.source.userId;
+
+      // ตรวจสอบคูปอง
+      const couponSnap = await db.ref('coupons/' + msg).once('value');
+      const coupon = couponSnap.val();
+      if (coupon && !coupon.used) {
+        // เพิ่มแต้มให้ user
+        await updateUserPoints(userId, coupon.points, `รับแต้มจากคูปอง ${msg}`);
+        // อัปเดตสถานะคูปอง
+        await db.ref('coupons/' + msg + '/used').set(true);
+        await replyToUser(event.replyToken, `รับแต้ม ${coupon.points} แต้ม จากคูปอง "${msg}" สำเร็จ!`);
+        return;
+      } else if (coupon && coupon.used) {
+        await replyToUser(event.replyToken, `คูปอง "${msg}" ถูกใช้ไปแล้ว`);
+        return;
+      }
 
       // เพิ่มแต้มด้วย !@ จำนวน
       if (/^!@\s*-?\d+$/.test(msg)) {
