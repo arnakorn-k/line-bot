@@ -173,13 +173,6 @@ node index.js
 3. อัปเดต Firebase schema หากจำเป็น
 4. ทดสอบผ่าน ngrok หรือ Vercel Preview
 
-## 📞 การติดต่อ
-
-หากมีคำถามหรือต้องการความช่วยเหลือ สามารถติดต่อได้ที่:
-- GitHub: [isen-sama](https://github.com/isen-sama)
-- Repository: [line-bot](https://github.com/isen-sama/line-bot)
-- ผู้พัฒนา: นายอาณกร ก้านแก้ว
-
 ## 📋 หมายเหตุ
 
 - โปรเจกต์นี้ใช้สำหรับการศึกษาและทดลองเท่านั้น
